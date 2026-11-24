@@ -3,10 +3,10 @@
 **Bases de Datos Avanzadas** · Facultad de Ingeniería, UNAM · Grupo 3 · Equipo 08
 **Profesor:** Mtro. Gerardo Gabriel Carrasco Zúñiga
 
-| Integrante | No. de cuenta |
-|---|---|
-| Rojas Chimal Karla Beatriz | 320048025 |
-| Calderón Gutiérrez Victor Emiliano | 423097331 |
+| Integrante | No. de cuenta | GitHub |
+|---|---|---|
+| Rojas Chimal Karla Beatriz | 320048025 | [@KarlaRoChi](https://github.com/KarlaRoChi) |
+| Calderón Gutiérrez Victor Emiliano | 423097331 | [@Delta2904](https://github.com/Delta2904) |
 
 Sistema de gestión de empleados en **PostgreSQL 16 sobre Docker** (base y esquema `rrhh`), adaptado del enunciado
 original en Oracle. Todas las cifras del reporte y de la presentación provienen de la ejecución real de los scripts.
