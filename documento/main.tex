@@ -378,7 +378,7 @@ Los tres modelos se combinan en capas:
 \begin{description}
     \item[RBAC (basado en roles):] los privilegios se otorgan a los roles, no a las personas; para dar o quitar acceso basta con cambiar la pertenencia a un rol.
     \item[DAC (discrecional):] el dueño de un objeto (el administrador) decide con \texttt{GRANT}/\texttt{REVOKE} quién accede a él; se demuestra otorgando y retirando \texttt{SELECT} sobre \texttt{empleados} a Karla.
-    \item[MAC (obligatorio):] aun con \texttt{GRANT}, el usuario solo ve las filas con \texttt{clasificacion\_\allowbreak{}nivel} menor o igual a su autorización, mediante políticas \textit{Row Level Security} con \texttt{FORCE}, que ni el dueño de la tabla puede evadir. Niveles: administrador 3, Karla 2, Víctor 3.
+    \item[MAC (obligatorio):] aun con \texttt{GRANT}, el usuario solo ve las filas con \texttt{clasificacion\_\allowbreak{}nivel} menor o igual a su autorización, mediante políticas \textit{Row Level Security} con \texttt{FORCE}, que se aplican también a quien recibe permisos directos sobre la tabla. Niveles: administrador 3, Karla 2, Víctor 3. El MAC restringe al analista y al auditor; el administrador tiene acceso total por diseño (la política \texttt{pol\_\allowbreak{}admin\_\allowbreak{}escritura} le permite todas las filas), y el superusuario \texttt{postgres} siempre omite RLS, como ocurre con \texttt{SYS} en Oracle.
 \end{description}
 
 \begin{table}[H]
@@ -415,7 +415,7 @@ Dos decisiones de diseño:
 
 \begin{itemize}
     \item La función del trigger es \texttt{SECURITY DEFINER}: registra el evento aunque el usuario que modifica no tenga ningún privilegio sobre la bitácora.
-    \item La bitácora es \textbf{inmutable}: los triggers \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}inmutable} y \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}no\_\allowbreak{}truncate} bloquean \texttt{UPDATE}, \texttt{DELETE} y \texttt{TRUNCATE}, incluso para el superusuario, y el administrador ni siquiera tiene permiso de escritura sobre ella.
+    \item La bitácora es \textbf{inmutable}: los triggers \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}inmutable} y \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}no\_\allowbreak{}truncate} bloquean \texttt{UPDATE}, \texttt{DELETE} y \texttt{TRUNCATE} para cualquier usuario que use SQL normal, incluido \texttt{postgres}, y el administrador ni siquiera tiene permiso de escritura sobre ella. \textbf{Límite:} un superusuario podría desactivar antes los triggers (\texttt{ALTER TABLE ... DISABLE TRIGGER} o \texttt{session\_\allowbreak{}replication\_\allowbreak{}role = replica}, el mismo mecanismo que se usa en la carga masiva); por eso, en producción, la bitácora debe copiarse además a un servidor externo (sección~\ref{sec:recomendaciones}).
 \end{itemize}
 
 \codigo{ev09_trigger_auditoria}{Bitácora y trigger de auditoría de empleados}
@@ -496,7 +496,7 @@ Víctor lee la bitácora y la ve completa (tres eventos del administrador con IP
 
 \subsection{DAC, MAC e inmutabilidad}
 
-El administrador otorga \texttt{SELECT} sobre \texttt{empleados} a Karla (DAC): aun así solo ve 40,000 filas con nivel máximo 2, porque el MAC se mantiene. Tras el \texttt{REVOKE}, la consulta vuelve a ser denegada. Finalmente, ni siquiera \texttt{postgres} puede vaciar o borrar la bitácora.
+El administrador otorga \texttt{SELECT} sobre \texttt{empleados} a Karla (DAC): aun así solo ve 40,000 filas con nivel máximo 2, porque el MAC se mantiene. Tras el \texttt{REVOKE}, la consulta vuelve a ser denegada. Finalmente, ni siquiera \texttt{postgres} puede vaciar o borrar la bitácora con \texttt{TRUNCATE} o \texttt{DELETE}: los triggers lo impiden.
 
 \codigo{ev17_dac_mac_inmutable}{DAC, MAC y bitácora inmutable}
 \evid{ev17_dac_mac_inmutable}{\texttt{GRANT}/\texttt{REVOKE} discrecional, filtrado MAC y bloqueo de \texttt{TRUNCATE}/\texttt{DELETE} en la bitácora.}{ev17}
@@ -823,7 +823,7 @@ Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se co
 \begin{itemize}
     \item \textbf{Diseño:} esquema completo de empleados, departamentos y roles, con \texttt{empleados} particionada por rango en cinco particiones y cinco tablespaces especializados (datos, índices, particiones, auditoría e histórico).
     \item \textbf{Seguridad:} tres usuarios y tres roles; RBAC con privilegios por rol, DAC demostrado con \texttt{GRANT}/\texttt{REVOKE} y MAC con niveles de autorización y \textit{Row Level Security} (el analista ve 40,000 de 60,000 filas). Las pruebas por rol (tabla~\ref{tab:matriz}) validan acceso, modificación y auditoría, incluso con rechazo de contraseña incorrecta.
-    \item \textbf{Auditoría:} vista y trigger que registran usuario, IP y salarios anterior y nuevo, y alimentan el historial de salarios; la bitácora es inmutable incluso para el superusuario.
+    \item \textbf{Auditoría:} vista y trigger que registran usuario, IP y salarios anterior y nuevo, y alimentan el historial de salarios; la bitácora no puede modificarse con SQL normal, ni siquiera por \texttt{postgres}, mientras sus triggers estén activos.
     \item \textbf{Carga masiva:} 60,000 registros (por encima del mínimo de 50,000) con un bloque PL/pgSQL por lotes con \texttt{COMMIT} intermedio.
     \item \textbf{Rendimiento:} tres consultas complejas analizadas con \texttt{EXPLAIN}; reducción del costo estimado de 95.4\,\% (Q1), 39.6\,\% (Q2) y 57.7\,\% (Q3), y del tiempo real de entre 70\,\% y 85\,\%, con la recreación del índice de Q1 como índice de cobertura.
     \item \textbf{Advisor y parámetros:} vistas equivalentes a \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}FINDINGS} y \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}RECOMMENDATIONS} que detectaron 5,165,500 filas leídas secuencialmente y, tras indexar, cero lecturas secuenciales en las particiones con datos; ajuste de \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}.
@@ -836,7 +836,8 @@ Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se co
 \begin{itemize}
     \item \textbf{\texttt{DB\_\allowbreak{}BLOCK\_\allowbreak{}SIZE}:} se consultó, pero PostgreSQL lo fija al compilar el motor (8192 bytes) y no puede modificarse; la afinación de memoria se hizo con \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}. No se modificó \texttt{shared\_\allowbreak{}buffers} porque requiere reiniciar el servicio.
     \item \textbf{\texttt{AUTOEXTEND} de datafiles:} no existe en PostgreSQL; el ajuste dinámico se hizo con particiones y con la reubicación de objetos entre tablespaces.
-    \item \textbf{MAC nativo:} PostgreSQL no tiene Oracle Label Security; se implementó con niveles de autorización y \textit{Row Level Security}, que cubre el objetivo (control obligatorio por clasificación) pero con una implementación propia.
+    \item \textbf{MAC nativo:} PostgreSQL no tiene Oracle Label Security; se implementó con niveles de autorización y \textit{Row Level Security}, que cubre el objetivo (control obligatorio por clasificación) pero con una implementación propia. El MAC aplica al analista y al auditor; el administrador y el superusuario quedan fuera por diseño.
+    \item \textbf{Inmutabilidad de la bitácora:} los triggers bloquean cualquier modificación por SQL, pero un superusuario puede desactivarlos; la protección completa requiere copiar la bitácora a un servidor externo o usar \texttt{pgAudit}.
     \item \textbf{Advisor automático:} \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}*} no existe; se reconstruyó con vistas sobre las estadísticas, por lo que las recomendaciones (crear/eliminar índices) las aplicó el equipo y no se ejecutan de forma automática.
     \item \textbf{Entorno:} se usó Docker en lugar de la máquina virtual VirtualBox mencionada en el enunciado, igual que en las prácticas 1 a 4; la presentación y las preguntas del profesor se pueden resolver ejecutando las consultas de la sección~\ref{sec:demo} sobre el mismo contenedor.
     \item \textbf{Alcance de la medición:} con 60,000 filas que caben en memoria, las diferencias en tiempo real son de milisegundos; el beneficio será mayor con volúmenes productivos, donde también pesará el costo de escritura de los índices.
