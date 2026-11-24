@@ -1,0 +1,1297 @@
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker compose up -d
+ Volume bd_datos_final Creating 
+ Network red-final Creating 
+ Network dockerpfinal_default Creating 
+ Volume bd_tablespace_final Creating 
+ Volume bd_datos_final Created 
+ Volume bd_tablespace_final Created 
+ Network dockerpfinal_default Created 
+ Container bd-lab-final-init Creating 
+ Network red-final Created 
+ Container bd-lab-final-init Created 
+ Container bd-lab-final Creating 
+ Container bd-lab-final Created 
+ Container bd-lab-final-init Starting 
+ Container bd-lab-final-init Started 
+ Container bd-lab-final-init Waiting 
+ Container bd-lab-final-init Exited 
+ Container bd-lab-final Starting 
+ Container bd-lab-final Started 
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker ps
+CONTAINER ID   IMAGE         COMMAND                  CREATED         STATUS                   PORTS                                         NAMES
+cb38978e3d36   postgres:16   "docker-entrypoint.s…"   7 seconds ago   Up 6 seconds (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   bd-lab-final
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec bd-lab-final ls -l /var/lib/postgresql/tablespaces
+total 20
+drwx------ 2 postgres postgres 4096 Oct 14 00:54 audit
+drwx------ 2 postgres postgres 4096 Oct 14 00:54 data
+drwx------ 2 postgres postgres 4096 Oct 14 00:54 hist
+drwx------ 2 postgres postgres 4096 Oct 14 00:54 idx
+drwx------ 2 postgres postgres 4096 Oct 14 00:54 part
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec bd-lab-final pg_isready -U postgres -d rrhh
+/var/run/postgresql:5432 - accepting connections
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 01_instancia_roles.sql  (se ejecuta como postgres sobre la BD rrhh)
+rrhh=# -- Tablespaces, roles (RBAC), usuarios del equipo y esquema del sistema.
+rrhh=# -- Las lineas "--;;" solo delimitan el bloque que generar_evidencias.py captura como una imagen.
+rrhh=# -- 1. Tablespaces: un directorio dedicado por tipo de carga
+rrhh=# --    (los directorios los crea y asigna a postgres el servicio init-tablespaces)
+rrhh=# CREATE TABLESPACE ts_rrhh_data  LOCATION '/var/lib/postgresql/tablespaces/data';
+CREATE TABLESPACE
+rrhh=# CREATE TABLESPACE ts_rrhh_idx   LOCATION '/var/lib/postgresql/tablespaces/idx';
+CREATE TABLESPACE
+rrhh=# CREATE TABLESPACE ts_rrhh_part  LOCATION '/var/lib/postgresql/tablespaces/part';
+CREATE TABLESPACE
+rrhh=# CREATE TABLESPACE ts_rrhh_audit LOCATION '/var/lib/postgresql/tablespaces/audit';
+CREATE TABLESPACE
+rrhh=# CREATE TABLESPACE ts_rrhh_hist  LOCATION '/var/lib/postgresql/tablespaces/hist';
+CREATE TABLESPACE
+rrhh=# \db+
+                                                  List of tablespaces
+     Name      |  Owner   |               Location                | Access privileges | Options |  Size   | Description 
+---------------+----------+---------------------------------------+-------------------+---------+---------+-------------
+ pg_default    | postgres |                                       |                   |         | 29 MB   | 
+ pg_global     | postgres |                                       |                   |         | 565 kB  | 
+ ts_rrhh_audit | postgres | /var/lib/postgresql/tablespaces/audit |                   |         | 0 bytes | 
+ ts_rrhh_data  | postgres | /var/lib/postgresql/tablespaces/data  |                   |         | 0 bytes | 
+ ts_rrhh_hist  | postgres | /var/lib/postgresql/tablespaces/hist  |                   |         | 0 bytes | 
+ ts_rrhh_idx   | postgres | /var/lib/postgresql/tablespaces/idx   |                   |         | 0 bytes | 
+ ts_rrhh_part  | postgres | /var/lib/postgresql/tablespaces/part  |                   |         | 0 bytes | 
+(7 rows)
+rrhh=# -- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion
+rrhh=# CREATE ROLE rol_admin    NOLOGIN;
+CREATE ROLE
+rrhh=# CREATE ROLE rol_analista NOLOGIN;
+CREATE ROLE
+rrhh=# CREATE ROLE rol_auditor  NOLOGIN;
+CREATE ROLE
+rrhh=# -- 3. Usuarios del equipo (ficticios) y asignacion de rol
+rrhh=# CREATE USER usr_admin          LOGIN PASSWORD 'AdminSecure2026#';
+CREATE ROLE
+rrhh=# CREATE USER usr_analista_karla LOGIN PASSWORD 'KarlaAnalyst2026#';
+CREATE ROLE
+rrhh=# CREATE USER usr_auditor_victor LOGIN PASSWORD 'VictorAudit2026#';
+CREATE ROLE
+rrhh=# GRANT rol_admin    TO usr_admin;
+GRANT ROLE
+rrhh=# GRANT rol_analista TO usr_analista_karla;
+GRANT ROLE
+rrhh=# GRANT rol_auditor  TO usr_auditor_victor;
+GRANT ROLE
+rrhh=# -- 4. Acceso a la BD solo para los roles del proyecto; tablespaces solo para el admin
+rrhh=# REVOKE ALL ON DATABASE rrhh FROM PUBLIC;
+REVOKE
+rrhh=# GRANT CONNECT ON DATABASE rrhh TO rol_admin, rol_analista, rol_auditor;
+GRANT
+rrhh=# GRANT CREATE ON TABLESPACE ts_rrhh_data, ts_rrhh_idx, ts_rrhh_part,
+rrhh-#                            ts_rrhh_audit, ts_rrhh_hist TO rol_admin;
+GRANT
+rrhh=# ALTER ROLE usr_admin          SET default_tablespace = 'ts_rrhh_data';
+ALTER ROLE
+rrhh=# ALTER ROLE usr_analista_karla SET default_tablespace = 'ts_rrhh_data';
+ALTER ROLE
+rrhh=# ALTER ROLE usr_auditor_victor SET default_tablespace = 'ts_rrhh_data';
+ALTER ROLE
+rrhh=# ALTER ROLE usr_admin          SET search_path = rrhh, public;
+ALTER ROLE
+rrhh=# ALTER ROLE usr_analista_karla SET search_path = rrhh, public;
+ALTER ROLE
+rrhh=# ALTER ROLE usr_auditor_victor SET search_path = rrhh, public;
+ALTER ROLE
+rrhh=# -- 5. Esquema del sistema, propiedad del rol administrador
+rrhh=# CREATE SCHEMA rrhh AUTHORIZATION rol_admin;
+CREATE SCHEMA
+rrhh=# \du
+                                  List of roles
+     Role name      |                         Attributes                         
+--------------------+------------------------------------------------------------
+ postgres           | Superuser, Create role, Create DB, Replication, Bypass RLS
+ rol_admin          | Cannot login
+ rol_analista       | Cannot login
+ rol_auditor        | Cannot login
+ usr_admin          | 
+ usr_analista_karla | 
+ usr_auditor_victor | 
+rrhh=# \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_admin -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=> -- 02_esquema.sql  (se ejecuta como usr_admin)
+rrhh=> -- Esquema relacional: roles, departamentos, empleados (particionada por rango) e historial.
+rrhh=> -- 1. Catalogos
+rrhh=> CREATE TABLE rrhh.roles (
+rrhh->     rol_id       SMALLINT PRIMARY KEY USING INDEX TABLESPACE ts_rrhh_idx,
+rrhh->     nombre_rol   VARCHAR(50) NOT NULL UNIQUE USING INDEX TABLESPACE ts_rrhh_idx,
+rrhh->     nivel_acceso VARCHAR(20) NOT NULL DEFAULT 'CONFIDENCIAL',
+rrhh->     descripcion  VARCHAR(200)
+rrhh-> ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.departamentos (
+rrhh->     depto_id                SMALLINT PRIMARY KEY USING INDEX TABLESPACE ts_rrhh_idx,
+rrhh->     nombre_depto            VARCHAR(60) NOT NULL UNIQUE USING INDEX TABLESPACE ts_rrhh_idx,
+rrhh->     presupuesto_anual       NUMERIC(14,2) CHECK (presupuesto_anual >= 0),
+rrhh->     clasificacion_seguridad VARCHAR(20) DEFAULT 'RESTRINGIDO'
+rrhh-> ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=> -- 2. Tabla de empleados particionada por rango de fecha de ingreso
+rrhh=> --    clasificacion_nivel se usa para MAC (1 Publico, 2 Confidencial, 3 Secreto)
+rrhh=> CREATE TABLE rrhh.empleados (
+rrhh->     emp_id              INTEGER       NOT NULL,
+rrhh->     nombre              VARCHAR(50)   NOT NULL,
+rrhh->     apellido            VARCHAR(50)   NOT NULL,
+rrhh->     email               VARCHAR(100),
+rrhh->     salario             NUMERIC(10,2) NOT NULL CHECK (salario > 0),
+rrhh->     fecha_ingreso       DATE          NOT NULL,
+rrhh->     depto_id            SMALLINT      NOT NULL REFERENCES rrhh.departamentos (depto_id),
+rrhh->     rol_id              SMALLINT      NOT NULL REFERENCES rrhh.roles (rol_id),
+rrhh->     clasificacion_nivel SMALLINT      NOT NULL DEFAULT 1 CHECK (clasificacion_nivel BETWEEN 1 AND 3),
+rrhh->     CONSTRAINT pk_empleados PRIMARY KEY (emp_id, fecha_ingreso)
+rrhh->         USING INDEX TABLESPACE ts_rrhh_idx
+rrhh-> ) PARTITION BY RANGE (fecha_ingreso);
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.p_historico  PARTITION OF rrhh.empleados
+rrhh->     FOR VALUES FROM (MINVALUE)     TO ('2021-01-01') TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.p_2021_2022  PARTITION OF rrhh.empleados
+rrhh->     FOR VALUES FROM ('2021-01-01') TO ('2023-01-01') TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.p_2023_2024  PARTITION OF rrhh.empleados
+rrhh->     FOR VALUES FROM ('2023-01-01') TO ('2025-01-01') TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.p_2025_2026  PARTITION OF rrhh.empleados
+rrhh->     FOR VALUES FROM ('2025-01-01') TO ('2027-01-01') TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=> CREATE TABLE rrhh.p_futuro     PARTITION OF rrhh.empleados
+rrhh->     FOR VALUES FROM ('2027-01-01') TO (MAXVALUE)     TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=> -- 3. Historial de salarios (referencia a la llave compuesta de empleados)
+rrhh=> CREATE TABLE rrhh.historial_salarios (
+rrhh->     hist_id        INTEGER GENERATED BY DEFAULT AS IDENTITY
+rrhh->                        PRIMARY KEY USING INDEX TABLESPACE ts_rrhh_idx,
+rrhh->     emp_id         INTEGER NOT NULL,
+rrhh->     fecha_ingreso  DATE    NOT NULL,
+rrhh->     salario        NUMERIC(10,2) NOT NULL,
+rrhh->     vigente_desde  DATE    NOT NULL DEFAULT CURRENT_DATE,
+rrhh->     motivo         VARCHAR(100),
+rrhh->     FOREIGN KEY (emp_id, fecha_ingreso) REFERENCES rrhh.empleados (emp_id, fecha_ingreso)
+rrhh-> ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=> -- 4. Ubicacion fisica de cada objeto (tabla / particion / indice -> tablespace)
+rrhh=> SELECT c.relname AS objeto, c.relkind AS tipo,
+rrhh->        COALESCE(t.spcname, 'pg_default') AS tablespace
+rrhh-> FROM pg_class c
+rrhh-> LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+rrhh-> WHERE c.relnamespace = 'rrhh'::regnamespace AND c.relkind IN ('r', 'p', 'i', 'I')
+rrhh-> ORDER BY c.relkind, c.relname;
+             objeto             | tipo |  tablespace  
+--------------------------------+------+--------------
+ pk_empleados                   | I    | ts_rrhh_idx
+ departamentos_nombre_depto_key | i    | ts_rrhh_idx
+ departamentos_pkey             | i    | ts_rrhh_idx
+ historial_salarios_pkey        | i    | ts_rrhh_idx
+ p_2021_2022_pkey               | i    | ts_rrhh_idx
+ p_2023_2024_pkey               | i    | ts_rrhh_idx
+ p_2025_2026_pkey               | i    | ts_rrhh_idx
+ p_futuro_pkey                  | i    | ts_rrhh_idx
+ p_historico_pkey               | i    | ts_rrhh_idx
+ roles_nombre_rol_key           | i    | ts_rrhh_idx
+ roles_pkey                     | i    | ts_rrhh_idx
+ empleados                      | p    | ts_rrhh_data
+ departamentos                  | r    | ts_rrhh_data
+ historial_salarios             | r    | ts_rrhh_data
+ p_2021_2022                    | r    | ts_rrhh_part
+ p_2023_2024                    | r    | ts_rrhh_part
+ p_2025_2026                    | r    | ts_rrhh_part
+ p_futuro                       | r    | ts_rrhh_part
+ p_historico                    | r    | ts_rrhh_part
+ roles                          | r    | ts_rrhh_data
+(20 rows)
+rrhh=> -- 5. Nivel de autorizacion (MAC) de cada usuario y funcion que lo consulta
+rrhh=> CREATE TABLE rrhh.autorizaciones (
+rrhh->     usuario NAME PRIMARY KEY,
+rrhh->     nivel   SMALLINT NOT NULL CHECK (nivel BETWEEN 1 AND 3)
+rrhh-> ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=> CREATE FUNCTION rrhh.nivel_usuario() RETURNS SMALLINT
+rrhh-> LANGUAGE sql STABLE SECURITY DEFINER SET search_path = rrhh, pg_temp AS
+rrhh-> $$ SELECT COALESCE((SELECT nivel FROM rrhh.autorizaciones WHERE usuario = session_user), 0) $$;
+CREATE FUNCTION
+rrhh=> -- 6. Vista de negocio: oculta lo que excede la autorizacion MAC del usuario
+rrhh=> CREATE VIEW rrhh.v_resumen_empleados AS
+rrhh-> SELECT e.emp_id,
+rrhh->        e.nombre || ' ' || e.apellido AS nombre_completo,
+rrhh->        e.email,
+rrhh->        d.nombre_depto,
+rrhh->        r.nombre_rol,
+rrhh->        e.fecha_ingreso,
+rrhh->        e.salario,
+rrhh->        e.clasificacion_nivel
+rrhh-> FROM rrhh.empleados e
+rrhh-> JOIN rrhh.departamentos d ON e.depto_id = d.depto_id
+rrhh-> JOIN rrhh.roles r         ON e.rol_id   = r.rol_id
+rrhh-> WHERE e.clasificacion_nivel <= rrhh.nivel_usuario();
+CREATE VIEW
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 03_auditoria.sql  (se ejecuta como postgres)
+rrhh=# -- Bitacora de auditoria, trigger de control de cambios y proteccion de la bitacora.
+rrhh=# -- 1. Bitacora en su propio tablespace
+rrhh=# CREATE TABLE rrhh.audit_log_empleados (
+rrhh-#     audit_id         BIGINT GENERATED BY DEFAULT AS IDENTITY
+rrhh-#                          PRIMARY KEY USING INDEX TABLESPACE ts_rrhh_audit,
+rrhh-#     accion           VARCHAR(10)  NOT NULL,
+rrhh-#     emp_id           INTEGER,
+rrhh-#     usuario_bd       NAME         NOT NULL,
+rrhh-#     fecha_operacion  TIMESTAMPTZ  NOT NULL DEFAULT clock_timestamp(),
+rrhh-#     salario_anterior NUMERIC(10,2),
+rrhh-#     salario_nuevo    NUMERIC(10,2),
+rrhh-#     ip_origen        INET
+rrhh-# ) TABLESPACE ts_rrhh_audit;
+CREATE TABLE
+rrhh=# -- 2. Trigger de auditoria (SECURITY DEFINER: registra aunque el usuario no tenga
+rrhh=# --    privilegios sobre la bitacora). Los cambios de salario tambien alimentan el historial.
+rrhh=# CREATE FUNCTION rrhh.fn_audit_empleados() RETURNS trigger
+rrhh-# LANGUAGE plpgsql SECURITY DEFINER SET search_path = rrhh, pg_temp AS
+rrhh-# $$
+rrhh$# BEGIN
+rrhh$#     IF TG_OP = 'INSERT' THEN
+rrhh$#         INSERT INTO audit_log_empleados (accion, emp_id, usuario_bd, salario_nuevo, ip_origen)
+rrhh$#         VALUES ('INSERT', NEW.emp_id, session_user, NEW.salario, inet_client_addr());
+rrhh$#         RETURN NEW;
+rrhh$#     ELSIF TG_OP = 'UPDATE' THEN
+rrhh$#         INSERT INTO audit_log_empleados (accion, emp_id, usuario_bd, salario_anterior, salario_nuevo, ip_origen)
+rrhh$#         VALUES ('UPDATE', NEW.emp_id, session_user, OLD.salario, NEW.salario, inet_client_addr());
+rrhh$#         IF NEW.salario <> OLD.salario THEN
+rrhh$#             INSERT INTO historial_salarios (emp_id, fecha_ingreso, salario, motivo)
+rrhh$#             VALUES (NEW.emp_id, NEW.fecha_ingreso, NEW.salario, 'Cambio de salario registrado por trigger');
+rrhh$#         END IF;
+rrhh$#         RETURN NEW;
+rrhh$#     ELSE
+rrhh$#         INSERT INTO audit_log_empleados (accion, emp_id, usuario_bd, salario_anterior, ip_origen)
+rrhh$#         VALUES ('DELETE', OLD.emp_id, session_user, OLD.salario, inet_client_addr());
+rrhh$#         RETURN OLD;
+rrhh$#     END IF;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# CREATE TRIGGER trg_audit_empleados
+rrhh-# AFTER INSERT OR UPDATE OR DELETE ON rrhh.empleados
+rrhh-# FOR EACH ROW EXECUTE FUNCTION rrhh.fn_audit_empleados();
+CREATE TRIGGER
+rrhh=# -- 3. Bitacora inmutable: ni siquiera el administrador puede modificarla o vaciarla
+rrhh=# CREATE FUNCTION rrhh.fn_bitacora_inmutable() RETURNS trigger
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# BEGIN
+rrhh$#     RAISE EXCEPTION 'La bitacora de auditoria es inmutable (% bloqueado)', TG_OP;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# CREATE TRIGGER trg_bitacora_inmutable
+rrhh-# BEFORE UPDATE OR DELETE ON rrhh.audit_log_empleados
+rrhh-# FOR EACH ROW EXECUTE FUNCTION rrhh.fn_bitacora_inmutable();
+CREATE TRIGGER
+rrhh=# CREATE TRIGGER trg_bitacora_no_truncate
+rrhh-# BEFORE TRUNCATE ON rrhh.audit_log_empleados
+rrhh-# FOR EACH STATEMENT EXECUTE FUNCTION rrhh.fn_bitacora_inmutable();
+CREATE TRIGGER
+rrhh=# SELECT tgname AS trigger, tgrelid::regclass AS tabla,
+rrhh-#        CASE WHEN tgenabled = 'O' THEN 'ACTIVO' ELSE tgenabled::text END AS estado
+rrhh-# FROM pg_trigger
+rrhh-# WHERE NOT tgisinternal AND tgrelid::regclass::text LIKE 'rrhh.%'
+rrhh-# ORDER BY tgrelid::regclass::text, tgname;
+         trigger          |          tabla           | estado 
+--------------------------+--------------------------+--------
+ trg_bitacora_inmutable   | rrhh.audit_log_empleados | ACTIVO
+ trg_bitacora_no_truncate | rrhh.audit_log_empleados | ACTIVO
+ trg_audit_empleados      | rrhh.empleados           | ACTIVO
+ trg_audit_empleados      | rrhh.p_2021_2022         | ACTIVO
+ trg_audit_empleados      | rrhh.p_2023_2024         | ACTIVO
+ trg_audit_empleados      | rrhh.p_2025_2026         | ACTIVO
+ trg_audit_empleados      | rrhh.p_futuro            | ACTIVO
+ trg_audit_empleados      | rrhh.p_historico         | ACTIVO
+(8 rows)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 04_seguridad.sql  (se ejecuta como postgres)
+rrhh=# -- Modelos RBAC + DAC + MAC sobre el esquema rrhh.
+rrhh=# -- 1. RBAC: privilegios minimos agrupados en roles
+rrhh=# --    Administrador: control total del esquema (menos la bitacora, que es de solo lectura)
+rrhh=# GRANT USAGE, CREATE ON SCHEMA rrhh TO rol_admin;
+GRANT
+rrhh=# GRANT ALL ON ALL TABLES IN SCHEMA rrhh TO rol_admin;
+GRANT
+rrhh=# REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON rrhh.audit_log_empleados FROM rol_admin;
+REVOKE
+rrhh=# GRANT ALL ON ALL SEQUENCES IN SCHEMA rrhh TO rol_admin;
+GRANT
+rrhh=# --    Analista: solo lectura sobre la vista de negocio y el catalogo de departamentos
+rrhh=# GRANT USAGE ON SCHEMA rrhh TO rol_analista;
+GRANT
+rrhh=# GRANT SELECT ON rrhh.v_resumen_empleados, rrhh.departamentos TO rol_analista;
+GRANT
+rrhh=# --    Auditor: lectura exclusiva de la bitacora y de la vista de negocio
+rrhh=# GRANT USAGE ON SCHEMA rrhh TO rol_auditor;
+GRANT
+rrhh=# GRANT SELECT ON rrhh.audit_log_empleados, rrhh.v_resumen_empleados TO rol_auditor;
+GRANT
+rrhh=# -- 2. MAC: nivel de autorizacion de cada usuario (1 Publico, 2 Confidencial, 3 Secreto)
+rrhh=# INSERT INTO rrhh.autorizaciones (usuario, nivel) VALUES
+rrhh-#     ('usr_admin', 3), ('usr_analista_karla', 2), ('usr_auditor_victor', 3);
+INSERT 0 3
+rrhh=# -- 3. MAC a nivel de fila (RLS): aunque un usuario reciba acceso a la tabla (DAC),
+rrhh=# --    solo ve las filas cuya clasificacion no excede su autorizacion
+rrhh=# ALTER TABLE rrhh.empleados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE
+rrhh=# ALTER TABLE rrhh.empleados FORCE ROW LEVEL SECURITY;
+ALTER TABLE
+rrhh=# CREATE POLICY pol_mac_lectura ON rrhh.empleados FOR SELECT
+rrhh-#     USING (clasificacion_nivel <= rrhh.nivel_usuario());
+CREATE POLICY
+rrhh=# CREATE POLICY pol_admin_escritura ON rrhh.empleados FOR ALL TO rol_admin
+rrhh-#     USING (true) WITH CHECK (true);
+CREATE POLICY
+rrhh=# -- 4. Resumen de privilegios efectivos por rol sobre los objetos del esquema
+rrhh=# SELECT grantee, table_name, string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privilegios
+rrhh-# FROM information_schema.role_table_grants
+rrhh-# WHERE table_schema = 'rrhh' AND grantee IN ('rol_admin', 'rol_analista', 'rol_auditor')
+rrhh-#   AND table_name IN ('v_resumen_empleados', 'departamentos', 'audit_log_empleados', 'empleados')
+rrhh-# GROUP BY grantee, table_name
+rrhh-# ORDER BY grantee, table_name;
+   grantee    |     table_name      |                          privilegios                          
+--------------+---------------------+---------------------------------------------------------------
+ rol_admin    | audit_log_empleados | REFERENCES, SELECT, TRIGGER
+ rol_admin    | departamentos       | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+ rol_admin    | empleados           | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+ rol_admin    | v_resumen_empleados | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+ rol_analista | departamentos       | SELECT
+ rol_analista | v_resumen_empleados | SELECT
+ rol_auditor  | audit_log_empleados | SELECT
+ rol_auditor  | v_resumen_empleados | SELECT
+(8 rows)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 05_carga_masiva.sql  (se ejecuta como postgres)
+rrhh=# -- Carga masiva de 60,000 empleados simulados con un bloque anonimo PL/pgSQL
+rrhh=# -- (equivalente al bloque PL/SQL de Oracle). Cumple el minimo de 50,000 registros.
+rrhh=# -- 1. Catalogos base
+rrhh=# INSERT INTO rrhh.roles (rol_id, nombre_rol, nivel_acceso, descripcion) VALUES
+rrhh-#     (1, 'Director',     'SECRETO',      'Direccion General'),
+rrhh-#     (2, 'Gerente',      'CONFIDENCIAL', 'Gerencia de Area'),
+rrhh-#     (3, 'Especialista', 'CONFIDENCIAL', 'Operacion Tecnica'),
+rrhh-#     (4, 'Asistente',    'PUBLICO',      'Soporte Administrativo');
+INSERT 0 4
+rrhh=# INSERT INTO rrhh.departamentos (depto_id, nombre_depto, presupuesto_anual, clasificacion_seguridad) VALUES
+rrhh-#     (10, 'Tecnologias de la Informacion', 5000000.00, 'SECRETO'),
+rrhh-#     (20, 'Finanzas y Contabilidad',       3500000.00, 'CONFIDENCIAL'),
+rrhh-#     (30, 'Recursos Humanos',              1500000.00, 'CONFIDENCIAL'),
+rrhh-#     (40, 'Operaciones y Logistica',       4000000.00, 'RESTRINGIDO');
+INSERT 0 4
+rrhh=# -- 2. Carga en lotes de 5,000 filas con confirmacion por lote (COMMIT dentro de DO).
+rrhh=# --    La bitacora se omite durante la carga (session_replication_role = replica) para no
+rrhh=# --    generar 60,000 eventos artificiales; las operaciones reales posteriores si se auditan.
+rrhh=# SET session_replication_role = replica;
+SET
+rrhh=# SELECT setseed(0.42);   -- salarios reproducibles
+ setseed 
+---------
+ 
+(1 row)
+rrhh=# DO $$
+rrhh$# DECLARE
+rrhh$#     v_total CONSTANT integer := 60000;
+rrhh$#     v_lote  CONSTANT integer := 5000;
+rrhh$#     v_ini   integer;
+rrhh$# BEGIN
+rrhh$#     FOR v_ini IN 1..v_total BY v_lote LOOP
+rrhh$#         INSERT INTO rrhh.empleados (emp_id, nombre, apellido, email, salario,
+rrhh$#                                     fecha_ingreso, depto_id, rol_id, clasificacion_nivel)
+rrhh$#         SELECT i,
+rrhh$#                'Empleado_' || i,
+rrhh$#                'Paterno_' || (i % 250),
+rrhh$#                'usuario.' || i || '@empresa-rrhh.com',
+rrhh$#                ROUND((12000 + random() * 83000)::numeric, 2),
+rrhh$#                DATE '2018-01-01' + (i % 3000),
+rrhh$#                (ARRAY[10, 20, 30, 40])[1 + i % 4],
+rrhh$#                (ARRAY[1, 2, 3, 4])[1 + i % 4],
+rrhh$#                1 + i % 3
+rrhh$#         FROM generate_series(v_ini, v_ini + v_lote - 1) AS i;
+rrhh$#         COMMIT;
+rrhh$#         RAISE NOTICE 'Lote cargado: % - %', v_ini, v_ini + v_lote - 1;
+rrhh$#     END LOOP;
+rrhh$#     RAISE NOTICE 'Carga completada exitosamente: % registros insertados.', v_total;
+rrhh$# END $$;
+NOTICE:  Lote cargado: 1 - 5000
+NOTICE:  Lote cargado: 5001 - 10000
+NOTICE:  Lote cargado: 10001 - 15000
+NOTICE:  Lote cargado: 15001 - 20000
+NOTICE:  Lote cargado: 20001 - 25000
+NOTICE:  Lote cargado: 25001 - 30000
+NOTICE:  Lote cargado: 30001 - 35000
+NOTICE:  Lote cargado: 35001 - 40000
+NOTICE:  Lote cargado: 40001 - 45000
+NOTICE:  Lote cargado: 45001 - 50000
+NOTICE:  Lote cargado: 50001 - 55000
+NOTICE:  Lote cargado: 55001 - 60000
+NOTICE:  Carga completada exitosamente: 60000 registros insertados.
+DO
+rrhh=# SET session_replication_role = origin;
+SET
+rrhh=# ANALYZE rrhh.empleados;
+ANALYZE
+rrhh=# SELECT tableoid::regclass AS particion, count(*) AS registros,
+rrhh-#        min(fecha_ingreso) AS desde, max(fecha_ingreso) AS hasta
+rrhh-# FROM rrhh.empleados
+rrhh-# GROUP BY tableoid ORDER BY 1::text;
+    particion     | registros |   desde    |   hasta    
+------------------+-----------+------------+------------
+ rrhh.p_historico |     21920 | 2018-01-01 | 2020-12-31
+ rrhh.p_2025_2026 |      8860 | 2025-01-01 | 2026-03-19
+ rrhh.p_2023_2024 |     14620 | 2023-01-01 | 2024-12-31
+ rrhh.p_2021_2022 |     14600 | 2021-01-01 | 2022-12-31
+(4 rows)
+rrhh=# SELECT count(*) AS total_empleados FROM rrhh.empleados;
+ total_empleados 
+-----------------
+           60000
+(1 row)
+rrhh=# \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it -e PGPASSWORD=ClaveIncorrecta bd-lab-final psql -h localhost -U usr_analista_karla -d rrhh
+psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "usr_analista_karla"
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_analista_karla -d rrhh
+rrhh=> SELECT current_user, session_user, rrhh.nivel_usuario() AS nivel_mac;
+    current_user    |    session_user    | nivel_mac 
+--------------------+--------------------+-----------
+ usr_analista_karla | usr_analista_karla |         2
+(1 row)
+rrhh=> SELECT count(*) AS visibles, max(clasificacion_nivel) AS nivel_max FROM v_resumen_empleados;
+ visibles | nivel_max 
+----------+-----------
+    40000 |         2
+(1 row)
+rrhh=> SELECT emp_id, nombre_completo, nombre_depto, nombre_rol, salario, clasificacion_nivel
+rrhh-> FROM v_resumen_empleados ORDER BY emp_id LIMIT 3;
+ emp_id |   nombre_completo    |         nombre_depto          | nombre_rol | salario  | clasificacion_nivel 
+--------+----------------------+-------------------------------+------------+----------+---------------------
+      1 | Empleado_1 Paterno_1 | Finanzas y Contabilidad       | Gerente    | 73664.42 |                   2
+      3 | Empleado_3 Paterno_3 | Operaciones y Logistica       | Asistente  | 89738.21 |                   1
+      4 | Empleado_4 Paterno_4 | Tecnologias de la Informacion | Director   | 17338.56 |                   2
+(3 rows)
+rrhh=> SELECT * FROM departamentos;
+ depto_id |         nombre_depto          | presupuesto_anual | clasificacion_seguridad 
+----------+-------------------------------+-------------------+-------------------------
+       10 | Tecnologias de la Informacion |        5000000.00 | SECRETO
+       20 | Finanzas y Contabilidad       |        3500000.00 | CONFIDENCIAL
+       30 | Recursos Humanos              |        1500000.00 | CONFIDENCIAL
+       40 | Operaciones y Logistica       |        4000000.00 | RESTRINGIDO
+(4 rows)
+rrhh=> SELECT * FROM empleados LIMIT 1;
+ERROR:  permission denied for table empleados
+rrhh=> DELETE FROM empleados WHERE emp_id = 1;
+ERROR:  permission denied for table empleados
+rrhh=> SELECT * FROM audit_log_empleados;
+ERROR:  permission denied for table audit_log_empleados
+rrhh=> CREATE TABLE intruso (id int);
+ERROR:  permission denied for schema rrhh
+LINE 1: CREATE TABLE intruso (id int);
+                     ^
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_admin -d rrhh
+rrhh=> SELECT current_user, rrhh.nivel_usuario() AS nivel_mac;
+ current_user | nivel_mac 
+--------------+-----------
+ usr_admin    |         3
+(1 row)
+rrhh=> UPDATE empleados SET salario = salario * 1.10 WHERE emp_id = 100;
+UPDATE 1
+rrhh=> INSERT INTO empleados
+rrhh-> VALUES (60001, 'Prueba', 'Insercion', 'prueba@empresa-rrhh.com', 25000, '2026-03-20', 10, 3, 1);
+INSERT 0 1
+rrhh=> DELETE FROM empleados WHERE emp_id = 60001;
+DELETE 1
+rrhh=> CREATE TABLE prueba_admin (id int);
+rrhh-> DROP TABLE prueba_admin;
+CREATE TABLE
+DROP TABLE
+rrhh=> UPDATE audit_log_empleados SET salario_nuevo = 1;
+ERROR:  permission denied for table audit_log_empleados
+rrhh=> SELECT hist_id, emp_id, salario, vigente_desde, motivo FROM historial_salarios;
+ hist_id | emp_id | salario  | vigente_desde |                  motivo                  
+---------+--------+----------+---------------+------------------------------------------
+       1 |    100 | 26717.00 | 2026-10-14    | Cambio de salario registrado por trigger
+(1 row)
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_auditor_victor -d rrhh
+rrhh=> SELECT audit_id, accion, emp_id, usuario_bd, salario_anterior, salario_nuevo, ip_origen
+rrhh-> FROM audit_log_empleados ORDER BY audit_id;
+ audit_id | accion | emp_id | usuario_bd | salario_anterior | salario_nuevo | ip_origen 
+----------+--------+--------+------------+------------------+---------------+-----------
+        1 | UPDATE |    100 | usr_admin  |         24288.18 |      26717.00 | ::1
+        2 | INSERT |  60001 | usr_admin  |                  |      25000.00 | ::1
+        3 | DELETE |  60001 | usr_admin  |         25000.00 |               | ::1
+(3 rows)
+rrhh=> SELECT usuario_bd, accion, count(*) AS eventos FROM audit_log_empleados
+rrhh-> GROUP BY usuario_bd, accion ORDER BY 1, 2;
+ usuario_bd | accion | eventos 
+------------+--------+---------
+ usr_admin  | DELETE |       1
+ usr_admin  | INSERT |       1
+ usr_admin  | UPDATE |       1
+(3 rows)
+rrhh=> SELECT count(*) AS visibles, max(clasificacion_nivel) AS nivel_max FROM v_resumen_empleados;
+ visibles | nivel_max 
+----------+-----------
+    60000 |         3
+(1 row)
+rrhh=> UPDATE audit_log_empleados SET salario_nuevo = 1;
+ERROR:  permission denied for table audit_log_empleados
+rrhh=> DELETE FROM empleados WHERE emp_id = 1;
+ERROR:  permission denied for table empleados
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_admin -d rrhh
+rrhh=> GRANT SELECT ON empleados TO usr_analista_karla;
+GRANT
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_analista_karla -d rrhh
+rrhh=> SELECT count(*) AS visibles, max(clasificacion_nivel) AS nivel_max FROM empleados;
+ visibles | nivel_max 
+----------+-----------
+    40000 |         2
+(1 row)
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_admin -d rrhh
+rrhh=> REVOKE SELECT ON empleados FROM usr_analista_karla;
+REVOKE
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_analista_karla -d rrhh
+rrhh=> SELECT count(*) FROM empleados;
+ERROR:  permission denied for table empleados
+rrhh=> \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+rrhh=# TRUNCATE rrhh.audit_log_empleados;
+ERROR:  La bitacora de auditoria es inmutable (TRUNCATE bloqueado)
+CONTEXT:  PL/pgSQL function rrhh.fn_bitacora_inmutable() line 3 at RAISE
+rrhh=# DELETE FROM rrhh.audit_log_empleados;
+ERROR:  La bitacora de auditoria es inmutable (DELETE bloqueado)
+CONTEXT:  PL/pgSQL function rrhh.fn_bitacora_inmutable() line 3 at RAISE
+rrhh=# \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 06_rendimiento_base.sql  (se ejecuta como postgres)
+rrhh=# -- Infraestructura de medicion: consultas a analizar, funciones que leen el plan de
+rrhh=# -- ejecucion (EXPLAIN en formato JSON) y tabla donde se guarda cada etapa de la afinacion.
+rrhh=# CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE EXTENSION
+rrhh=# SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+rrhh=# -- 1. Las 3 consultas complejas a evaluar
+rrhh=# CREATE TABLE rrhh.consultas_tuning (
+rrhh-#     consulta    TEXT PRIMARY KEY,
+rrhh-#     descripcion TEXT NOT NULL,
+rrhh-#     sentencia   TEXT NOT NULL
+rrhh-# ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=# INSERT INTO rrhh.consultas_tuning VALUES
+rrhh-# ('Q1', 'Rango de fechas con poda de particiones',
+rrhh-#  $q$SELECT depto_id, ROUND(AVG(salario),2) AS salario_prom, COUNT(*) AS total
+rrhh$#     FROM rrhh.empleados
+rrhh$#     WHERE fecha_ingreso BETWEEN DATE '2023-06-01' AND DATE '2023-06-30'
+rrhh$#     GROUP BY depto_id$q$),
+rrhh-# ('Q2', 'Masa salarial con JOIN a catalogos',
+rrhh-#  $q$SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_personal, SUM(e.salario) AS gasto_nomina
+rrhh$#     FROM rrhh.empleados e
+rrhh$#     JOIN rrhh.departamentos d ON e.depto_id = d.depto_id
+rrhh$#     JOIN rrhh.roles r ON e.rol_id = r.rol_id
+rrhh$#     WHERE e.salario > 92000
+rrhh$#     GROUP BY d.nombre_depto, r.nombre_rol$q$),
+rrhh-# ('Q3', 'Salarios atipicos del depto 10 (subconsulta)',
+rrhh-#  $q$SELECT e.emp_id, e.nombre, e.salario
+rrhh$#     FROM rrhh.empleados e
+rrhh$#     WHERE e.depto_id = 10
+rrhh$#       AND e.salario > (SELECT AVG(e2.salario) * 1.7 FROM rrhh.empleados e2 WHERE e2.depto_id = 10)$q$);
+INSERT 0 3
+rrhh=# -- 2. Lectura del plan: costo del optimizador (EXPLAIN) y tiempo real (EXPLAIN ANALYZE)
+rrhh=# CREATE FUNCTION rrhh.costo_plan(q TEXT) RETURNS NUMERIC
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# DECLARE j JSON;
+rrhh$# BEGIN
+rrhh$#     EXECUTE 'EXPLAIN (FORMAT JSON) ' || q INTO j;
+rrhh$#     RETURN (j -> 0 -> 'Plan' ->> 'Total Cost')::NUMERIC;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# CREATE FUNCTION rrhh.tiempo_plan(q TEXT) RETURNS NUMERIC
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# DECLARE j JSON;
+rrhh$# BEGIN
+rrhh$#     EXECUTE 'EXPLAIN (ANALYZE, FORMAT JSON) ' || q INTO j;
+rrhh$#     RETURN (j -> 0 ->> 'Execution Time')::NUMERIC;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# -- 3. Resultados por etapa de afinacion
+rrhh=# CREATE TABLE rrhh.tuning_resultados (
+rrhh-#     etapa     TEXT NOT NULL,
+rrhh-#     consulta  TEXT NOT NULL REFERENCES rrhh.consultas_tuning (consulta),
+rrhh-#     costo     NUMERIC NOT NULL,
+rrhh-#     tiempo_ms NUMERIC NOT NULL,
+rrhh-#     PRIMARY KEY (etapa, consulta)
+rrhh-# ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=# CREATE FUNCTION rrhh.registrar_etapa(p_etapa TEXT) RETURNS VOID
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# DECLARE
+rrhh$#     c    RECORD;
+rrhh$#     v_ms NUMERIC;
+rrhh$# BEGIN
+rrhh$#     FOR c IN SELECT consulta, sentencia FROM rrhh.consultas_tuning ORDER BY consulta LOOP
+rrhh$#         -- tiempo real = mejor de 5 ejecuciones (reduce el ruido de una sola medicion)
+rrhh$#         SELECT MIN(rrhh.tiempo_plan(c.sentencia)) INTO v_ms FROM generate_series(1, 5);
+rrhh$#         INSERT INTO rrhh.tuning_resultados
+rrhh$#         VALUES (p_etapa, c.consulta, rrhh.costo_plan(c.sentencia), v_ms);
+rrhh$#     END LOOP;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# -- 4. Carga de trabajo reproducible: cada consulta se ejecuta p_veces veces
+rrhh=# CREATE FUNCTION rrhh.ejecutar_carga(p_veces INTEGER) RETURNS VOID
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# DECLARE c RECORD;
+rrhh$# BEGIN
+rrhh$#     FOR c IN SELECT sentencia FROM rrhh.consultas_tuning ORDER BY consulta LOOP
+rrhh$#         FOR i IN 1..p_veces LOOP
+rrhh$#             EXECUTE c.sentencia;
+rrhh$#         END LOOP;
+rrhh$#     END LOOP;
+rrhh$# END;
+rrhh$# $$;
+CREATE FUNCTION
+rrhh=# -- 5. Estadisticas actualizadas y medicion de la etapa base (sin indices secundarios)
+rrhh=# VACUUM ANALYZE rrhh.empleados;
+VACUUM
+rrhh=# SELECT rrhh.registrar_etapa('1_sin_indices');
+ registrar_etapa 
+-----------------
+ 
+(1 row)
+rrhh=# SELECT etapa, consulta, costo, tiempo_ms FROM rrhh.tuning_resultados ORDER BY consulta;
+     etapa     | consulta |  costo  | tiempo_ms 
+---------------+----------+---------+-----------
+ 1_sin_indices | Q1       |  432.81 |     1.197
+ 1_sin_indices | Q2       | 1708.78 |    10.093
+ 1_sin_indices | Q3       | 3497.53 |    20.164
+(3 rows)
+rrhh=# -- Query 1: filtro por rango de fechas (poda de particiones)
+rrhh=# EXPLAIN
+rrhh-# SELECT depto_id, ROUND(AVG(salario),2) AS salario_prom, COUNT(*) AS total
+rrhh-# FROM rrhh.empleados
+rrhh-# WHERE fecha_ingreso BETWEEN DATE '2023-06-01' AND DATE '2023-06-30'
+rrhh-# GROUP BY depto_id;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=432.75..432.81 rows=4 width=42)
+   Group Key: empleados.depto_id
+   ->  Seq Scan on p_2023_2024 empleados  (cost=0.00..428.30 rows=594 width=10)
+         Filter: ((fecha_ingreso >= '2023-06-01'::date) AND (fecha_ingreso <= '2023-06-30'::date))
+(4 rows)
+rrhh=# -- Query 2: JOIN multitabla y agregacion
+rrhh=# EXPLAIN
+rrhh-# SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_personal, SUM(e.salario) AS gasto_nomina
+rrhh-# FROM rrhh.empleados e
+rrhh-# JOIN rrhh.departamentos d ON e.depto_id = d.depto_id
+rrhh-# JOIN rrhh.roles r ON e.rol_id = r.rol_id
+rrhh-# WHERE e.salario > 92000
+rrhh-# GROUP BY d.nombre_depto, r.nombre_rol;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ HashAggregate  (cost=1680.86..1708.78 rows=2234 width=296)
+   Group Key: d.nombre_depto, r.nombre_rol
+   ->  Hash Join  (cost=30.35..1658.52 rows=2234 width=268)
+         Hash Cond: (e.rol_id = r.rol_id)
+         ->  Hash Join  (cost=17.43..1639.54 rows=2234 width=152)
+               Hash Cond: (e.depto_id = d.depto_id)
+               ->  Append  (cost=0.00..1616.17 rows=2234 width=16)
+                     ->  Seq Scan on p_historico e_1  (cost=0.00..585.00 rows=800 width=16)
+                           Filter: (salario > '92000'::numeric)
+                     ->  Seq Scan on p_2021_2022 e_2  (cost=0.00..390.50 rows=556 width=16)
+                           Filter: (salario > '92000'::numeric)
+                     ->  Seq Scan on p_2023_2024 e_3  (cost=0.00..391.75 rows=515 width=16)
+                           Filter: (salario > '92000'::numeric)
+                     ->  Seq Scan on p_2025_2026 e_4  (cost=0.00..237.75 rows=362 width=16)
+                           Filter: (salario > '92000'::numeric)
+                     ->  Seq Scan on p_futuro e_5  (cost=0.00..0.00 rows=1 width=24)
+                           Filter: (salario > '92000'::numeric)
+               ->  Hash  (cost=13.30..13.30 rows=330 width=140)
+                     ->  Seq Scan on departamentos d  (cost=0.00..13.30 rows=330 width=140)
+         ->  Hash  (cost=11.30..11.30 rows=130 width=120)
+               ->  Seq Scan on roles r  (cost=0.00..11.30 rows=130 width=120)
+(21 rows)
+rrhh=# -- Query 3: subconsulta sobre el promedio salarial del departamento
+rrhh=# EXPLAIN
+rrhh-# SELECT e.emp_id, e.nombre, e.salario
+rrhh-# FROM rrhh.empleados e
+rrhh-# WHERE e.depto_id = 10
+rrhh-#   AND e.salario > (SELECT AVG(e2.salario) * 1.7 FROM rrhh.empleados e2 WHERE e2.depto_id = 10);
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Append  (cost=1717.52..3497.53 rows=5001 width=26)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=1717.51..1717.52 rows=1 width=32)
+           ->  Append  (cost=0.00..1680.01 rows=15001 width=8)
+                 ->  Seq Scan on p_historico e2_1  (cost=0.00..585.00 rows=5480 width=8)
+                       Filter: (depto_id = 10)
+                 ->  Seq Scan on p_2021_2022 e2_2  (cost=0.00..390.50 rows=3660 width=8)
+                       Filter: (depto_id = 10)
+                 ->  Seq Scan on p_2023_2024 e2_3  (cost=0.00..391.75 rows=3660 width=8)
+                       Filter: (depto_id = 10)
+                 ->  Seq Scan on p_2025_2026 e2_4  (cost=0.00..237.75 rows=2200 width=8)
+                       Filter: (depto_id = 10)
+                 ->  Seq Scan on p_futuro e2_5  (cost=0.00..0.00 rows=1 width=16)
+                       Filter: (depto_id = 10)
+   ->  Seq Scan on p_historico e_1  (cost=0.00..639.80 rows=1827 width=26)
+         Filter: ((salario > $0) AND (depto_id = 10))
+   ->  Seq Scan on p_2021_2022 e_2  (cost=0.00..427.00 rows=1220 width=26)
+         Filter: ((salario > $0) AND (depto_id = 10))
+   ->  Seq Scan on p_2023_2024 e_3  (cost=0.00..428.30 rows=1220 width=26)
+         Filter: ((salario > $0) AND (depto_id = 10))
+   ->  Seq Scan on p_2025_2026 e_4  (cost=0.00..259.90 rows=733 width=26)
+         Filter: ((salario > $0) AND (depto_id = 10))
+   ->  Seq Scan on p_futuro e_5  (cost=0.00..0.00 rows=1 width=138)
+         Filter: ((salario > $0) AND (depto_id = 10))
+(24 rows)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 07_advisor.sql  (se ejecuta como postgres)
+rrhh=# -- Equivalente a DBA_ADVISOR_FINDINGS y DBA_ADVISOR_RECOMMENDATIONS de Oracle, construido
+rrhh=# -- sobre las vistas de estadisticas de PostgreSQL (el motor no incluye un advisor automatico).
+rrhh=# -- 1. Hallazgos: particiones leidas secuencialmente con frecuencia, e indices sin uso
+rrhh=# CREATE VIEW rrhh.v_advisor_hallazgos AS
+rrhh-# SELECT 'LECTURAS SECUENCIALES'::TEXT AS hallazgo,
+rrhh-#        s.relname::TEXT               AS objeto,
+rrhh-#        s.seq_scan                    AS veces,
+rrhh-#        s.seq_tup_read                AS filas_leidas
+rrhh-# FROM pg_stat_user_tables s
+rrhh-# WHERE s.schemaname = 'rrhh' AND s.relname LIKE 'p\_%'
+rrhh-#   AND s.seq_tup_read > 0 AND s.seq_scan > 2 * COALESCE(s.idx_scan, 0)
+rrhh-# UNION ALL
+rrhh-# SELECT 'INDICE SIN USO', i.indexrelname::TEXT, i.idx_scan, 0
+rrhh-# FROM pg_stat_user_indexes i
+rrhh-# JOIN pg_index x ON x.indexrelid = i.indexrelid
+rrhh-# WHERE i.schemaname = 'rrhh' AND i.idx_scan = 0 AND NOT x.indisunique AND NOT x.indisprimary;
+CREATE VIEW
+rrhh=# -- 2. Recomendaciones derivadas de los hallazgos
+rrhh=# CREATE VIEW rrhh.v_advisor_recomendaciones AS
+rrhh-# SELECT hallazgo,
+rrhh-#        count(*)                 AS objetos_afectados,
+rrhh-#        sum(filas_leidas)        AS filas_leidas_en_total,
+rrhh-#        CASE hallazgo
+rrhh-#             WHEN 'LECTURAS SECUENCIALES'
+rrhh-#                  THEN 'CREATE INDEX sobre las columnas de filtro de las sentencias mas costosas'
+rrhh-#             ELSE      'Evaluar DROP INDEX: cuesta escritura y espacio sin beneficio de lectura'
+rrhh-#        END                      AS recomendacion
+rrhh-# FROM rrhh.v_advisor_hallazgos
+rrhh-# GROUP BY hallazgo;
+CREATE VIEW
+rrhh=# -- 3. Sentencias mas costosas (de donde se toman las columnas a indexar)
+rrhh=# CREATE VIEW rrhh.v_advisor_sentencias AS
+rrhh-# SELECT calls, ROUND(total_exec_time::NUMERIC, 2) AS total_ms,
+rrhh-#        LEFT(REGEXP_REPLACE(query, '\s+', ' ', 'g'), 70) AS sentencia
+rrhh-# FROM pg_stat_statements
+rrhh-# WHERE query ILIKE '%rrhh.empleados%' AND query NOT ILIKE '%pg_stat%'
+rrhh-#   AND query NOT ILIKE '%consultas_tuning%'
+rrhh-# ORDER BY total_exec_time DESC;
+CREATE VIEW
+rrhh=# -- 4. Carga de trabajo real: cada consulta se ejecuta 20 veces
+rrhh=# SELECT rrhh.ejecutar_carga(20);
+ ejecutar_carga 
+----------------
+ 
+(1 row)
+rrhh=# SELECT pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+rrhh=# SELECT * FROM rrhh.v_advisor_hallazgos ORDER BY filas_leidas DESC, objeto;
+       hallazgo        |   objeto    | veces | filas_leidas 
+-----------------------+-------------+-------+--------------
+ LECTURAS SECUENCIALES | p_historico |    81 |      1753600
+ LECTURAS SECUENCIALES | p_2023_2024 |   106 |      1535100
+ LECTURAS SECUENCIALES | p_2021_2022 |    81 |      1168000
+ LECTURAS SECUENCIALES | p_2025_2026 |    81 |       708800
+(4 rows)
+rrhh=# SELECT * FROM rrhh.v_advisor_recomendaciones;
+       hallazgo        | objetos_afectados | filas_leidas_en_total |                              recomendacion                               
+-----------------------+-------------------+-----------------------+--------------------------------------------------------------------------
+ LECTURAS SECUENCIALES |                 4 |               5165500 | CREATE INDEX sobre las columnas de filtro de las sentencias mas costosas
+(1 row)
+rrhh=# SELECT * FROM rrhh.v_advisor_sentencias LIMIT 3;
+ calls | total_ms |                               sentencia                                
+-------+----------+------------------------------------------------------------------------
+     1 |  1123.37 | VACUUM ANALYZE rrhh.empleados
+     1 |     1.99 | EXPLAIN SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_
+     1 |     1.32 | EXPLAIN SELECT e.emp_id, e.nombre, e.salario FROM rrhh.empleados e WHE
+(3 rows)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 08_indices.sql  (se ejecuta como postgres)
+rrhh=# -- Creacion y recreacion de indices, y evaluacion del impacto en el costo de ejecucion.
+rrhh=# -- 1. Indices recomendados por el advisor (se crean en cada particion, en ts_rrhh_idx)
+rrhh=# CREATE INDEX idx_emp_fecha_depto   ON rrhh.empleados (fecha_ingreso, depto_id) TABLESPACE ts_rrhh_idx;
+CREATE INDEX
+rrhh=# CREATE INDEX idx_emp_depto_salario ON rrhh.empleados (depto_id, salario)       TABLESPACE ts_rrhh_idx;
+CREATE INDEX
+rrhh=# CREATE INDEX idx_emp_salario       ON rrhh.empleados (salario) INCLUDE (depto_id, rol_id) TABLESPACE ts_rrhh_idx;
+CREATE INDEX
+rrhh=# CREATE INDEX idx_emp_email         ON rrhh.empleados (email)                   TABLESPACE ts_rrhh_idx;
+CREATE INDEX
+rrhh=# ANALYZE rrhh.empleados;
+ANALYZE
+rrhh=# SELECT rrhh.registrar_etapa('2_con_indices');
+ registrar_etapa 
+-----------------
+ 
+(1 row)
+rrhh=# -- 2. Tamano de cada indice (suma de sus particiones)
+rrhh=# SELECT c.relname AS indice, COALESCE(t.spcname, 'pg_default') AS tablespace,
+rrhh-#        pg_size_pretty((SELECT sum(pg_relation_size(pt.relid)) FROM pg_partition_tree(c.oid) pt)) AS tamano_total
+rrhh-# FROM pg_class c
+rrhh-# LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+rrhh-# WHERE c.relnamespace = 'rrhh'::regnamespace AND c.relkind = 'I'
+rrhh-# ORDER BY c.relname;
+        indice         | tablespace  | tamano_total 
+-----------------------+-------------+--------------
+ idx_emp_depto_salario | ts_rrhh_idx | 1920 kB
+ idx_emp_email         | ts_rrhh_idx | 3000 kB
+ idx_emp_fecha_depto   | ts_rrhh_idx | 536 kB
+ idx_emp_salario       | ts_rrhh_idx | 1920 kB
+ pk_empleados          | ts_rrhh_idx | 1392 kB
+(5 rows)
+rrhh=# -- 3. Recrear un indice: idx_emp_fecha_depto no incluye salario, asi que Q1 aun debe leer la
+rrhh=# --    tabla. Se reemplaza por un indice de cobertura (INCLUDE) que permite Index Only Scan.
+rrhh=# DROP INDEX rrhh.idx_emp_fecha_depto;
+DROP INDEX
+rrhh=# CREATE INDEX idx_emp_fecha_cobertura ON rrhh.empleados (fecha_ingreso)
+rrhh-#     INCLUDE (depto_id, salario) TABLESPACE ts_rrhh_idx;
+CREATE INDEX
+rrhh=# VACUUM ANALYZE rrhh.empleados;
+VACUUM
+rrhh=# SELECT rrhh.registrar_etapa('3_indice_recreado');
+ registrar_etapa 
+-----------------
+ 
+(1 row)
+rrhh=# -- Query 1 despues de los indices
+rrhh=# EXPLAIN
+rrhh-# SELECT depto_id, ROUND(AVG(salario),2) AS salario_prom, COUNT(*) AS total
+rrhh-# FROM rrhh.empleados
+rrhh-# WHERE fecha_ingreso BETWEEN DATE '2023-06-01' AND DATE '2023-06-30'
+rrhh-# GROUP BY depto_id;
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=28.62..28.68 rows=4 width=42)
+   Group Key: empleados.depto_id
+   ->  Index Only Scan using p_2023_2024_fecha_ingreso_depto_id_salario_idx on p_2023_2024 empleados  (cost=0.29..24.17 rows=594 width=10)
+         Index Cond: ((fecha_ingreso >= '2023-06-01'::date) AND (fecha_ingreso <= '2023-06-30'::date))
+(4 rows)
+rrhh=# -- Query 2 despues de los indices
+rrhh=# EXPLAIN
+rrhh-# SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_personal, SUM(e.salario) AS gasto_nomina
+rrhh-# FROM rrhh.empleados e
+rrhh-# JOIN rrhh.departamentos d ON e.depto_id = d.depto_id
+rrhh-# JOIN rrhh.roles r ON e.rol_id = r.rol_id
+rrhh-# WHERE e.salario > 92000
+rrhh-# GROUP BY d.nombre_depto, r.nombre_rol;
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=1025.22..1053.14 rows=2234 width=296)
+   Group Key: d.nombre_depto, r.nombre_rol
+   ->  Hash Join  (cost=52.84..1002.88 rows=2234 width=268)
+         Hash Cond: (e.rol_id = r.rol_id)
+         ->  Hash Join  (cost=39.91..983.90 rows=2234 width=152)
+               Hash Cond: (e.depto_id = d.depto_id)
+               ->  Append  (cost=22.49..960.53 rows=2234 width=16)
+                     ->  Bitmap Heap Scan on p_historico e_1  (cost=22.49..343.49 rows=800 width=16)
+                           Recheck Cond: (salario > '92000'::numeric)
+                           ->  Bitmap Index Scan on p_historico_salario_depto_id_rol_id_idx  (cost=0.00..22.29 rows=800 width=0)
+                                 Index Cond: (salario > '92000'::numeric)
+                     ->  Bitmap Heap Scan on p_2021_2022 e_2  (cost=16.59..231.54 rows=556 width=16)
+                           Recheck Cond: (salario > '92000'::numeric)
+                           ->  Bitmap Index Scan on p_2021_2022_salario_depto_id_rol_id_idx  (cost=0.00..16.46 rows=556 width=0)
+                                 Index Cond: (salario > '92000'::numeric)
+                     ->  Bitmap Heap Scan on p_2023_2024 e_3  (cost=16.28..231.71 rows=515 width=16)
+                           Recheck Cond: (salario > '92000'::numeric)
+                           ->  Bitmap Index Scan on p_2023_2024_salario_depto_id_rol_id_idx  (cost=0.00..16.15 rows=515 width=0)
+                                 Index Cond: (salario > '92000'::numeric)
+                     ->  Bitmap Heap Scan on p_2025_2026 e_4  (cost=11.09..142.62 rows=362 width=16)
+                           Recheck Cond: (salario > '92000'::numeric)
+                           ->  Bitmap Index Scan on p_2025_2026_salario_depto_id_rol_id_idx  (cost=0.00..11.00 rows=362 width=0)
+                                 Index Cond: (salario > '92000'::numeric)
+                     ->  Seq Scan on p_futuro e_5  (cost=0.00..0.00 rows=1 width=24)
+                           Filter: (salario > '92000'::numeric)
+               ->  Hash  (cost=13.30..13.30 rows=330 width=140)
+                     ->  Seq Scan on departamentos d  (cost=0.00..13.30 rows=330 width=140)
+         ->  Hash  (cost=11.30..11.30 rows=130 width=120)
+               ->  Seq Scan on roles r  (cost=0.00..11.30 rows=130 width=120)
+(29 rows)
+rrhh=# -- Query 3 despues de los indices
+rrhh=# EXPLAIN
+rrhh-# SELECT e.emp_id, e.nombre, e.salario
+rrhh-# FROM rrhh.empleados e
+rrhh-# WHERE e.depto_id = 10
+rrhh-#   AND e.salario > (SELECT AVG(e2.salario) * 1.7 FROM rrhh.empleados e2 WHERE e2.depto_id = 10);
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Append  (cost=679.18..1719.56 rows=5001 width=26)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=628.15..628.17 rows=1 width=32)
+           ->  Append  (cost=0.29..590.65 rows=15001 width=8)
+                 ->  Index Only Scan using p_historico_depto_id_salario_idx on p_historico e2_1  (cost=0.29..188.19 rows=5480 width=8)
+                       Index Cond: (depto_id = 10)
+                 ->  Index Only Scan using p_2021_2022_depto_id_salario_idx on p_2021_2022 e2_2  (cost=0.29..124.34 rows=3660 width=8)
+                       Index Cond: (depto_id = 10)
+                 ->  Index Only Scan using p_2023_2024_depto_id_salario_idx on p_2023_2024 e2_3  (cost=0.29..124.34 rows=3660 width=8)
+                       Index Cond: (depto_id = 10)
+                 ->  Index Only Scan using p_2025_2026_depto_id_salario_idx on p_2025_2026 e2_4  (cost=0.29..78.78 rows=2200 width=8)
+                       Index Cond: (depto_id = 10)
+                 ->  Seq Scan on p_futuro e2_5  (cost=0.00..0.00 rows=1 width=16)
+                       Filter: (depto_id = 10)
+   ->  Bitmap Heap Scan on p_historico e_1  (cost=51.01..389.42 rows=1827 width=26)
+         Recheck Cond: ((depto_id = 10) AND (salario > $0))
+         ->  Bitmap Index Scan on p_historico_depto_id_salario_idx  (cost=0.00..50.56 rows=1827 width=0)
+               Index Cond: ((depto_id = 10) AND (salario > $0))
+   ->  Bitmap Heap Scan on p_2021_2022 e_2  (cost=32.79..259.09 rows=1220 width=26)
+         Recheck Cond: ((depto_id = 10) AND (salario > $0))
+         ->  Bitmap Index Scan on p_2021_2022_depto_id_salario_idx  (cost=0.00..32.48 rows=1220 width=0)
+               Index Cond: ((depto_id = 10) AND (salario > $0))
+   ->  Bitmap Heap Scan on p_2023_2024 e_3  (cost=32.79..260.09 rows=1220 width=26)
+         Recheck Cond: ((depto_id = 10) AND (salario > $0))
+         ->  Bitmap Index Scan on p_2023_2024_depto_id_salario_idx  (cost=0.00..32.48 rows=1220 width=0)
+               Index Cond: ((depto_id = 10) AND (salario > $0))
+   ->  Bitmap Heap Scan on p_2025_2026 e_4  (cost=19.80..157.79 rows=733 width=26)
+         Recheck Cond: ((depto_id = 10) AND (salario > $0))
+         ->  Bitmap Index Scan on p_2025_2026_depto_id_salario_idx  (cost=0.00..19.61 rows=733 width=0)
+               Index Cond: ((depto_id = 10) AND (salario > $0))
+   ->  Seq Scan on p_futuro e_5  (cost=0.00..0.00 rows=1 width=138)
+         Filter: ((salario > $0) AND (depto_id = 10))
+(32 rows)
+rrhh=# -- 4. Comparativo del costo del optimizador y del tiempo real por etapa
+rrhh=# SELECT consulta,
+rrhh-#        MAX(costo)     FILTER (WHERE etapa = '1_sin_indices')     AS costo_antes,
+rrhh-#        MAX(costo)     FILTER (WHERE etapa = '2_con_indices')     AS costo_con_idx,
+rrhh-#        MAX(costo)     FILTER (WHERE etapa = '3_indice_recreado') AS costo_final,
+rrhh-#        MAX(tiempo_ms) FILTER (WHERE etapa = '1_sin_indices')     AS ms_antes,
+rrhh-#        MAX(tiempo_ms) FILTER (WHERE etapa = '3_indice_recreado') AS ms_despues
+rrhh-# FROM rrhh.tuning_resultados
+rrhh-# GROUP BY consulta ORDER BY consulta;
+ consulta | costo_antes | costo_con_idx | costo_final | ms_antes | ms_despues 
+----------+-------------+---------------+-------------+----------+------------
+ Q1       |      432.81 |        232.80 |       28.68 |    1.197 |      0.173
+ Q2       |     1708.78 |       1053.14 |     1053.14 |   10.093 |      2.730
+ Q3       |     3497.53 |       1719.56 |     1719.56 |   20.164 |      4.590
+(3 rows)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 09_almacenamiento.sql  (se ejecuta como postgres)
+rrhh=# -- Monitoreo de tablespaces, ajuste dinamico de particiones y mantenimiento automatico.
+rrhh=# -- PostgreSQL no tiene AUTOEXTEND: los archivos de un tablespace crecen mientras haya
+rrhh=# -- espacio en el volumen; el crecimiento se controla con las vistas de uso y con nuevas particiones.
+rrhh=# -- 1. Uso de espacio por tablespace (equivalente a DBA_DATA_FILES / DBA_FREE_SPACE)
+rrhh=# CREATE VIEW rrhh.v_uso_tablespaces AS
+rrhh-# SELECT t.spcname                                                AS tablespace,
+rrhh-#        COALESCE(NULLIF(pg_tablespace_location(t.oid), ''), '(directorio de datos)') AS ruta,
+rrhh-#        pg_size_pretty(pg_tablespace_size(t.oid))                AS usado,
+rrhh-#        (SELECT count(*) FROM pg_class c WHERE c.reltablespace = t.oid AND c.relkind IN ('r', 'i')) AS objetos
+rrhh-# FROM pg_tablespace t
+rrhh-# ORDER BY pg_tablespace_size(t.oid) DESC;
+CREATE VIEW
+rrhh=# SELECT * FROM rrhh.v_uso_tablespaces;
+  tablespace   |                 ruta                  |  usado   | objetos 
+---------------+---------------------------------------+----------+---------
+ pg_default    | (directorio de datos)                 | 30 MB    |       0
+ ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 10236 kB |      30
+ ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 6972 kB  |       5
+ pg_global     | (directorio de datos)                 | 605 kB   |      41
+ ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 84 kB    |       9
+ ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB    |       3
+ ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 0 bytes  |       0
+(7 rows)
+rrhh=# -- 2. Particiones: rango, filas y tamano de cada una
+rrhh=# CREATE VIEW rrhh.v_particiones AS
+rrhh-# SELECT c.relname                              AS particion,
+rrhh-#        pg_get_expr(c.relpartbound, c.oid)     AS rango,
+rrhh-#        s.n_live_tup                           AS filas,
+rrhh-#        pg_size_pretty(pg_total_relation_size(c.oid)) AS tamano_total
+rrhh-# FROM pg_inherits i
+rrhh-# JOIN pg_class c        ON c.oid = i.inhrelid
+rrhh-# JOIN pg_stat_user_tables s ON s.relid = c.oid
+rrhh-# WHERE i.inhparent = 'rrhh.empleados'::regclass
+rrhh-# ORDER BY c.relname;
+CREATE VIEW
+rrhh=# SELECT * FROM rrhh.v_particiones;
+  particion  |                      rango                       | filas | tamano_total 
+-------------+--------------------------------------------------+-------+--------------
+ p_2021_2022 | FOR VALUES FROM ('2021-01-01') TO ('2023-01-01') | 14600 | 4144 kB
+ p_2023_2024 | FOR VALUES FROM ('2023-01-01') TO ('2025-01-01') | 14620 | 4184 kB
+ p_2025_2026 | FOR VALUES FROM ('2025-01-01') TO ('2027-01-01') |  8860 | 2576 kB
+ p_futuro    | FOR VALUES FROM ('2027-01-01') TO (MAXVALUE)     |     0 | 40 kB
+ p_historico | FOR VALUES FROM (MINVALUE) TO ('2021-01-01')     | 21920 | 6176 kB
+(5 rows)
+rrhh=# -- 3. Ajuste dinamico: nueva particion 2027-2028 y reubicacion de los datos historicos
+rrhh=# --    en su propio tablespace (ts_rrhh_hist), sin perder informacion
+rrhh=# CREATE TABLE rrhh.p_2027_2028 (LIKE rrhh.empleados INCLUDING DEFAULTS INCLUDING CONSTRAINTS)
+rrhh-#     TABLESPACE ts_rrhh_part;
+CREATE TABLE
+rrhh=# ALTER TABLE rrhh.empleados DETACH PARTITION rrhh.p_futuro;
+ALTER TABLE
+rrhh=# ALTER TABLE rrhh.empleados ATTACH PARTITION rrhh.p_2027_2028
+rrhh-#     FOR VALUES FROM ('2027-01-01') TO ('2029-01-01');
+ALTER TABLE
+rrhh=# ALTER TABLE rrhh.empleados ATTACH PARTITION rrhh.p_futuro
+rrhh-#     FOR VALUES FROM ('2029-01-01') TO (MAXVALUE);
+ALTER TABLE
+rrhh=# ALTER TABLE rrhh.p_historico SET TABLESPACE ts_rrhh_hist;
+ALTER TABLE
+rrhh=# ALTER INDEX rrhh.p_historico_pkey SET TABLESPACE ts_rrhh_hist;
+ALTER INDEX
+rrhh=# SELECT * FROM rrhh.v_particiones;
+  particion  |                      rango                       | filas | tamano_total 
+-------------+--------------------------------------------------+-------+--------------
+ p_2021_2022 | FOR VALUES FROM ('2021-01-01') TO ('2023-01-01') | 14600 | 4144 kB
+ p_2023_2024 | FOR VALUES FROM ('2023-01-01') TO ('2025-01-01') | 14620 | 4184 kB
+ p_2025_2026 | FOR VALUES FROM ('2025-01-01') TO ('2027-01-01') |  8860 | 2576 kB
+ p_2027_2028 | FOR VALUES FROM ('2027-01-01') TO ('2029-01-01') |     0 | 40 kB
+ p_futuro    | FOR VALUES FROM ('2029-01-01') TO (MAXVALUE)     |     0 | 40 kB
+ p_historico | FOR VALUES FROM (MINVALUE) TO ('2021-01-01')     | 21920 | 6176 kB
+(6 rows)
+rrhh=# SELECT * FROM rrhh.v_uso_tablespaces;
+  tablespace   |                 ruta                  |  usado  | objetos 
+---------------+---------------------------------------+---------+---------
+ pg_default    | (directorio de datos)                 | 30 MB   |       0
+ ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 9780 kB |      34
+ ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 4452 kB |       5
+ ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 3020 kB |       2
+ pg_global     | (directorio de datos)                 | 605 kB  |      41
+ ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 84 kB   |       9
+ ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB   |       3
+(7 rows)
+rrhh=# -- 4. Mantenimiento automatico: reconstruye los indices secundarios de las particiones cuyo
+rrhh=# --    nombre inicia con p_prefijo y actualiza las estadisticas de todas las particiones
+rrhh=# CREATE PROCEDURE rrhh.prc_mantenimiento(p_prefijo TEXT)
+rrhh-# LANGUAGE plpgsql AS
+rrhh-# $$
+rrhh$# DECLARE r RECORD;
+rrhh$# BEGIN
+rrhh$#     FOR r IN SELECT c.relname FROM pg_class c
+rrhh$#              WHERE c.relnamespace = 'rrhh'::regnamespace AND c.relkind = 'i'
+rrhh$#                AND c.relname !~ '_pkey$' AND c.relname !~ '_key$'
+rrhh$#                AND c.relname LIKE p_prefijo || '%'
+rrhh$#     LOOP
+rrhh$#         EXECUTE format('REINDEX INDEX rrhh.%I', r.relname);
+rrhh$#         RAISE NOTICE 'Indice reconstruido: %', r.relname;
+rrhh$#     END LOOP;
+rrhh$#     FOR r IN SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+rrhh$#              WHERE i.inhparent = 'rrhh.empleados'::regclass
+rrhh$#     LOOP
+rrhh$#         EXECUTE format('ANALYZE rrhh.%I', r.relname);
+rrhh$#         RAISE NOTICE 'Particion analizada: %', r.relname;
+rrhh$#     END LOOP;
+rrhh$# END;
+rrhh$# $$;
+CREATE PROCEDURE
+rrhh=# CALL rrhh.prc_mantenimiento('p_2025');
+NOTICE:  Indice reconstruido: p_2025_2026_depto_id_salario_idx
+NOTICE:  Indice reconstruido: p_2025_2026_salario_depto_id_rol_id_idx
+NOTICE:  Indice reconstruido: p_2025_2026_email_idx
+NOTICE:  Indice reconstruido: p_2025_2026_fecha_ingreso_depto_id_salario_idx
+NOTICE:  Particion analizada: p_historico
+NOTICE:  Particion analizada: p_2021_2022
+NOTICE:  Particion analizada: p_2023_2024
+NOTICE:  Particion analizada: p_2025_2026
+NOTICE:  Particion analizada: p_2027_2028
+NOTICE:  Particion analizada: p_futuro
+CALL
+rrhh=# -- 5. Truncado controlado: se cargan filas de prueba en la particion nueva y se vacia
+rrhh=# --    solo esa particion (sin tocar el resto de la tabla ni disparar la bitacora por fila)
+rrhh=# SET session_replication_role = replica;
+SET
+rrhh=# INSERT INTO rrhh.empleados (emp_id, nombre, apellido, email, salario, fecha_ingreso, depto_id, rol_id, clasificacion_nivel)
+rrhh-# SELECT 70000 + i, 'Temporal_' || i, 'Prueba', 'tmp.' || i || '@empresa-rrhh.com', 15000,
+rrhh-#        DATE '2027-01-01' + (i % 700), 40, 4, 1
+rrhh-# FROM generate_series(1, 1000) AS i;
+INSERT 0 1000
+rrhh=# SET session_replication_role = origin;
+SET
+rrhh=# SELECT count(*) AS filas_antes FROM rrhh.p_2027_2028;
+ filas_antes 
+-------------
+        1000
+(1 row)
+rrhh=# -- Una particion referenciada por una FK no se puede truncar directamente: se desprende,
+rrhh=# -- se vacia y se vuelve a adjuntar con el mismo rango
+rrhh=# ALTER TABLE rrhh.empleados DETACH PARTITION rrhh.p_2027_2028;
+ALTER TABLE
+rrhh=# TRUNCATE rrhh.p_2027_2028;
+TRUNCATE TABLE
+rrhh=# ALTER TABLE rrhh.empleados ATTACH PARTITION rrhh.p_2027_2028
+rrhh-#     FOR VALUES FROM ('2027-01-01') TO ('2029-01-01');
+ALTER TABLE
+rrhh=# SELECT count(*) AS filas_despues FROM rrhh.p_2027_2028;
+ filas_despues 
+---------------
+             0
+(1 row)
+rrhh=# SELECT count(*) AS total_empleados FROM rrhh.empleados;
+ total_empleados 
+-----------------
+           60000
+(1 row)
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
+psql (16.15 (Debian 16.15-1.pgdg13+2))
+Type "help" for help.
+
+rrhh=# -- 10_parametros.sql  (se ejecuta como postgres)
+rrhh=# -- Parametros criticos de configuracion (equivalentes a DB_BLOCK_SIZE, SGA_TARGET, PGA_AGGREGATE_TARGET).
+rrhh=# -- 1. Valores actuales
+rrhh=# SELECT name, setting, unit, context
+rrhh-# FROM pg_settings
+rrhh-# WHERE name IN ('block_size', 'shared_buffers', 'work_mem', 'maintenance_work_mem',
+rrhh-#                'effective_cache_size', 'random_page_cost', 'max_connections')
+rrhh-# ORDER BY name;
+         name         | setting | unit |  context   
+----------------------+---------+------+------------
+ block_size           | 8192    |      | internal
+ effective_cache_size | 524288  | 8kB  | user
+ maintenance_work_mem | 65536   | kB   | user
+ max_connections      | 100     |      | postmaster
+ random_page_cost     | 4       |      | user
+ shared_buffers       | 16384   | 8kB  | postmaster
+ work_mem             | 4096    | kB   | user
+(7 rows)
+rrhh=# -- 2. Ajustes segun las recomendaciones del advisor (se aplican sin reiniciar).
+rrhh=# --    block_size es fijo al compilar el motor (como DB_BLOCK_SIZE): no se cambia en caliente.
+rrhh=# ALTER SYSTEM SET work_mem = '32MB';               -- ordenamientos y HASH JOIN sin desbordar a disco
+ALTER SYSTEM
+rrhh=# ALTER SYSTEM SET maintenance_work_mem = '256MB';  -- REINDEX / CREATE INDEX / VACUUM mas rapidos
+ALTER SYSTEM
+rrhh=# ALTER SYSTEM SET random_page_cost = 1.1;          -- almacenamiento SSD: el acceso por indice es mas barato
+ALTER SYSTEM
+rrhh=# SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+rrhh=# SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+rrhh=# SELECT name, setting, unit, source
+rrhh-# FROM pg_settings
+rrhh-# WHERE name IN ('work_mem', 'maintenance_work_mem', 'random_page_cost')
+rrhh-# ORDER BY name;
+         name         | setting | unit |       source       
+----------------------+---------+------+--------------------
+ maintenance_work_mem | 262144  | kB   | configuration file
+ random_page_cost     | 1.1     |      | configuration file
+ work_mem             | 32768   | kB   | configuration file
+(3 rows)
+rrhh=# -- 3. Reevaluacion de las 3 consultas con los parametros ajustados
+rrhh=# SELECT rrhh.registrar_etapa('4_parametros');
+ registrar_etapa 
+-----------------
+ 
+(1 row)
+rrhh=# SELECT consulta,
+rrhh-#        MAX(costo)     FILTER (WHERE etapa = '3_indice_recreado') AS costo_idx,
+rrhh-#        MAX(costo)     FILTER (WHERE etapa = '4_parametros')      AS costo_params,
+rrhh-#        MAX(tiempo_ms) FILTER (WHERE etapa = '3_indice_recreado') AS ms_idx,
+rrhh-#        MAX(tiempo_ms) FILTER (WHERE etapa = '4_parametros')      AS ms_params
+rrhh-# FROM rrhh.tuning_resultados
+rrhh-# GROUP BY consulta ORDER BY consulta;
+ consulta | costo_idx | costo_params | ms_idx | ms_params 
+----------+-----------+--------------+--------+-----------
+ Q1       |     28.68 |        19.98 |  0.173 |     0.175
+ Q2       |   1053.14 |      1031.86 |  2.730 |     2.977
+ Q3       |   1719.56 |      1480.70 |  4.590 |     4.486
+(3 rows)
+rrhh=# -- 4. Aplicacion de la recomendacion INDICE SIN USO: idx_emp_email no lo usa ninguna de las
+rrhh=# --    consultas de la carga de trabajo y solo agrega costo de escritura y 3 MB de espacio
+rrhh=# DROP INDEX rrhh.idx_emp_email;
+DROP INDEX
+rrhh=# -- 5. Verificacion: se reinician las estadisticas, se repite la carga de trabajo y se revisa
+rrhh=# --    si el advisor sigue reportando lecturas secuenciales
+rrhh=# SELECT pg_stat_reset();
+ pg_stat_reset 
+---------------
+ 
+(1 row)
+rrhh=# SELECT rrhh.ejecutar_carga(20);
+ ejecutar_carga 
+----------------
+ 
+(1 row)
+rrhh=# SELECT pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+rrhh=# SELECT s.relname AS particion, s.seq_scan, s.seq_tup_read, s.idx_scan
+rrhh-# FROM pg_stat_user_tables s
+rrhh-# WHERE s.schemaname = 'rrhh' AND s.relname LIKE 'p\_%'
+rrhh-# ORDER BY s.relname;
+  particion  | seq_scan | seq_tup_read | idx_scan 
+-------------+----------+--------------+----------
+ p_2021_2022 |        0 |            0 |       60
+ p_2023_2024 |        0 |            0 |       80
+ p_2025_2026 |        0 |            0 |       60
+ p_2027_2028 |       20 |            0 |       40
+ p_futuro    |       60 |            0 |        0
+ p_historico |        0 |            0 |       60
+(6 rows)
+rrhh=# SELECT * FROM rrhh.v_advisor_hallazgos ORDER BY filas_leidas DESC, objeto;
+    hallazgo    |                     objeto                     | veces | filas_leidas 
+----------------+------------------------------------------------+-------+--------------
+ INDICE SIN USO | p_2021_2022_fecha_ingreso_depto_id_salario_idx |     0 |            0
+ INDICE SIN USO | p_2025_2026_fecha_ingreso_depto_id_salario_idx |     0 |            0
+ INDICE SIN USO | p_2027_2028_fecha_ingreso_depto_id_salario_idx |     0 |            0
+ INDICE SIN USO | p_2027_2028_salario_depto_id_rol_id_idx        |     0 |            0
+ INDICE SIN USO | p_futuro_depto_id_salario_idx                  |     0 |            0
+ INDICE SIN USO | p_futuro_fecha_ingreso_depto_id_salario_idx    |     0 |            0
+ INDICE SIN USO | p_futuro_salario_depto_id_rol_id_idx           |     0 |            0
+ INDICE SIN USO | p_historico_fecha_ingreso_depto_id_salario_idx |     0 |            0
+(8 rows)
+rrhh=# \q
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker stop bd-lab-final
+bd-lab-final
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker ps -a
+CONTAINER ID   IMAGE         COMMAND                  CREATED             STATUS                              PORTS     NAMES
+cb38978e3d36   postgres:16   "docker-entrypoint.s…"   42 seconds ago      Exited (0) Less than a second ago             bd-lab-final
+8b929048d8f3   postgres:16   "docker-entrypoint.s…"   42 seconds ago      Exited (0) 41 seconds ago                     bd-lab-final-init
+fc7cfbb07ef8   postgres:16   "docker-entrypoint.s…"   About an hour ago   Exited (0) About an hour ago                  bd-lab-p4
+00ebf9d13e12   postgres:16   "docker-entrypoint.s…"   2 hours ago         Exited (0) 2 hours ago                        bd-lab-p3

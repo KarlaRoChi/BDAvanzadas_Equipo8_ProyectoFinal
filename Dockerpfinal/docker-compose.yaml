@@ -1,0 +1,62 @@
+# Proyecto Final - Diseno, Seguridad y Optimizacion de un Sistema de Gestion de Empleados (PostgreSQL 16)
+# Misma convencion que P1/P2/P3/P4: imagen postgres:16, red y volumenes declarativos.
+# - pg_stat_statements se precarga (equivalente a los advisors de Oracle).
+# - El servicio "init-tablespaces" crea y asigna al usuario postgres los directorios de los
+#   tablespaces (el volumen se monta como root), por lo que no hace falta ningun paso manual.
+# - ./sql se monta en /sql (solo lectura) con los scripts numerados del proyecto.
+# Nota: usa el puerto 5432 del host; detener antes el contenedor de otras practicas.
+
+services:
+  init-tablespaces:
+    image: postgres:16
+    container_name: bd-lab-final-init
+    user: root
+    command:
+      - sh
+      - -c
+      - >
+        mkdir -p /ts/data /ts/idx /ts/part /ts/audit /ts/hist &&
+        chown -R postgres:postgres /ts && chmod 700 /ts/*
+    volumes:
+      - bd_tablespace_final:/ts
+    restart: "no"
+
+  postgres-final:
+    image: postgres:16
+    container_name: bd-lab-final
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    depends_on:
+      init-tablespaces:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: postgres          # superusuario (equivalente a SYS / DBA)
+      POSTGRES_PASSWORD: Admin12345
+      POSTGRES_DB: rrhh                # BD del Sistema de Gestion de Empleados
+      PGUSER: postgres
+      PGDATABASE: rrhh
+    ports:
+      - "5432:5432"
+    volumes:
+      - bd_datos_final:/var/lib/postgresql/data
+      - bd_tablespace_final:/var/lib/postgresql/tablespaces
+      - ./sql:/sql:ro
+      # Exige contrasena en conexiones TCP (solo en la 1a inicializacion)
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    networks:
+      - red-final
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rrhh"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  bd_datos_final:
+    name: bd_datos_final
+  bd_tablespace_final:
+    name: bd_tablespace_final
+
+networks:
+  red-final:
+    name: red-final
