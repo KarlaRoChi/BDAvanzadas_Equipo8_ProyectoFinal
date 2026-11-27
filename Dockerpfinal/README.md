@@ -7,7 +7,7 @@ Documento del proyecto: `../documento/main.tex`.
 
 | Elemento | Valor |
 |---|---|
-| Contenedor | `bd-lab-final` (más `bd-lab-final-init`, que corre una vez y termina) |
+| Contenedor | `bd-lab-final` (más `bd-lab-final-init`, que corre una vez y termina, y `bd-lab-final-mant`, el mantenimiento programado) |
 | Superusuario / contraseña | `postgres` / `Admin12345` (socket Unix en `trust`, como `/ as sysdba`) |
 | BD de trabajo | `rrhh` (esquema `rrhh`) |
 | Usuarios del proyecto | `usr_admin`, `usr_analista_karla`, `usr_auditor_victor` (contraseñas en `sql/01_instancia_roles.sql`) |
@@ -50,10 +50,19 @@ done
 | `10_parametros.sql` | Ajuste de parámetros, aplicación de recomendaciones | `postgres` |
 
 - Comprobar el estado final: `bash validar.sh`
+- **Mantenimiento automático:** el servicio `mantenimiento` (`bd-lab-final-mant`) ejecuta
+  `rrhh.prc_mantenimiento('p_')` (REINDEX + ANALYZE) al arrancar y luego cada `MANT_INTERVALO_SEG`
+  segundos (por defecto 86400, una vez al día). Cada corrida queda en `rrhh.log_mantenimiento`.
+  Si aún no se han ejecutado los scripts 01-09, la corrida se omite sin error. Para la demo:
+  ```bash
+  docker exec bd-lab-final-mant sh /mant/mantenimiento.sh --una-vez   # corrida inmediata
+  docker logs bd-lab-final-mant                                        # historial del servicio
+  docker exec -it bd-lab-final psql -c "SELECT * FROM rrhh.log_mantenimiento;"
+  ```
 - Regenerar las capturas de `../documento/img` y el código de `../documento/sql`:
   `python generar_evidencias.py` (requiere `pip install pillow`;
   **ejecuta `docker compose down -v` al empezar**, así que borra los datos del proyecto).
-- Al terminar (sin borrar volúmenes): `docker stop bd-lab-final`.
+- Al terminar (sin borrar volúmenes): `docker compose stop`.
 
 ## Diferencias con Oracle
 

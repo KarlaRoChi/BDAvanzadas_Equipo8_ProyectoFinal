@@ -51,6 +51,29 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Mantenimiento automatico: ejecuta rrhh.prc_mantenimiento (REINDEX + ANALYZE) al arrancar
+  # y despues cada MANT_INTERVALO_SEG segundos; cada corrida queda en rrhh.log_mantenimiento.
+  # Mientras no existan los scripts 01-09, la corrida se omite sin error.
+  mantenimiento:
+    image: postgres:16
+    container_name: bd-lab-final-mant
+    depends_on:
+      postgres-final:
+        condition: service_healthy
+    entrypoint: ["sh", "/mant/mantenimiento.sh"]
+    environment:
+      PGHOST: postgres-final
+      PGUSER: postgres
+      PGPASSWORD: Admin12345
+      PGDATABASE: rrhh
+      MANT_INTERVALO_SEG: "86400"      # una vez al dia
+      MANT_PREFIJO: "p_"               # indices de todas las particiones
+    volumes:
+      - ./mantenimiento:/mant:ro
+    networks:
+      - red-final
+    restart: unless-stopped
+
 volumes:
   bd_datos_final:
     name: bd_datos_final

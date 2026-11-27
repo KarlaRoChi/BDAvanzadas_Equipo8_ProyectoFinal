@@ -17,7 +17,7 @@ original en Oracle. Todas las cifras del reporte y de la presentación provienen
 |---|---|
 | [`documento/`](documento) | Reporte en LaTeX (`main.tex`), 42 evidencias en `img/`, código SQL de cada evidencia en `sql/` y el PDF entregable |
 | [`presentacion/`](presentacion) | Presentación en PowerPoint (24 diapositivas con notas del orador) |
-| [`Dockerpfinal/`](Dockerpfinal) | Contenedor: `docker-compose.yaml`, los 10 scripts SQL del proyecto, generador de evidencias, `validar.sh` y la transcripción completa de la ejecución |
+| [`Dockerpfinal/`](Dockerpfinal) | Contenedor: `docker-compose.yaml`, los 10 scripts SQL del proyecto, el mantenimiento programado (`mantenimiento/`), generador de evidencias, `validar.sh` y la transcripción completa de la ejecución |
 
 ### Entregables (nomenclatura `Proyectoxx_equipoxx_<nombre>`)
 
@@ -31,7 +31,7 @@ original en Oracle. Todas las cifras del reporte y de la presentación provienen
 - **Auditoría:** vista y trigger que registran usuario, IP y salarios anterior/nuevo; bitácora inmutable incluso para el superusuario.
 - **Carga masiva:** 60,000 registros con un bloque PL/pgSQL por lotes.
 - **Rendimiento:** tres consultas complejas con `EXPLAIN`, advisor propio (vistas sobre `pg_stat_*`), recreación de índices y comparativo antes/después (reducción de costo de 95.4 %, 39.6 % y 57.7 %).
-- **Almacenamiento y parámetros:** monitoreo de tablespaces, nueva partición, reubicación del histórico, procedimiento de mantenimiento, truncado y ajuste de `work_mem`, `maintenance_work_mem` y `random_page_cost`.
+- **Almacenamiento y parámetros:** monitoreo de tablespaces, nueva partición, reubicación del histórico, procedimiento de mantenimiento programado (servicio `mantenimiento`, una vez al día), truncado y ajuste de `work_mem`, `maintenance_work_mem` y `random_page_cost`.
 
 ## Cómo reproducirlo
 

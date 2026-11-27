@@ -251,7 +251,7 @@ El entorno se define de forma declarativa en \texttt{docker-compose\allowbreak{}
     \item El script \texttt{initdb/01-hba-scram.sh} deja las conexiones TCP de loopback con \texttt{scram-sha-256}. Así, las pruebas con \texttt{psql -h localhost} validan de verdad la contraseña de cada usuario, mientras que el socket Unix queda en \texttt{trust} (análogo a \texttt{/ as sysdba}).
 \end{itemize}
 
-Además se precarga \texttt{pg\_\allowbreak{}stat\_\allowbreak{}statements}, base del \textit{advisor} que se construye en la sección~\ref{sec:advisor}, y se monta la carpeta \texttt{sql/} con los diez scripts numerados del proyecto.
+Además se precarga \texttt{pg\_\allowbreak{}stat\_\allowbreak{}statements}, base del \textit{advisor} que se construye en la sección~\ref{sec:advisor}, y se monta la carpeta \texttt{sql/} con los diez scripts numerados del proyecto. El archivo siguiente muestra los dos servicios con los que se generaron las evidencias; la versión final agrega un tercero, \texttt{mantenimiento}, que programa el mantenimiento automático (sección~\ref{sec:mant_programado}).
 
 \begin{lstlisting}[language={},caption={Archivo docker-compose.yaml del Proyecto Final}]
 services:
@@ -757,10 +757,31 @@ Sin detener el servicio ni perder datos se hacen dos ajustes: (1) se crea la nue
 
 \subsection{Mantenimiento automático}
 
-El procedimiento \texttt{prc\_\allowbreak{}mantenimiento(p\_\allowbreak{}prefijo)} recorre con un cursor implícito los índices secundarios cuyo nombre empieza con el prefijo y los reconstruye con \texttt{REINDEX INDEX} (SQL dinámico con \texttt{format('\%I')} para citar los identificadores de forma segura), y luego actualiza las estadísticas de todas las particiones con \texttt{ANALYZE}. Es el análogo de los scripts de \texttt{ALTER INDEX ... REBUILD} y \texttt{DBMS\_\allowbreak{}STATS} y se puede programar con \texttt{cron} o la extensión \texttt{pg\_\allowbreak{}cron}.
+El procedimiento \texttt{prc\_\allowbreak{}mantenimiento(p\_\allowbreak{}prefijo)} recorre con un cursor implícito los índices secundarios cuyo nombre empieza con el prefijo y los reconstruye con \texttt{REINDEX INDEX} (SQL dinámico con \texttt{format('\%I')} para citar los identificadores de forma segura), y luego actualiza las estadísticas de todas las particiones con \texttt{ANALYZE}. Es el análogo de los scripts de \texttt{ALTER INDEX ... REBUILD} y \texttt{DBMS\_\allowbreak{}STATS}. Su ejecución periódica la hace el servicio \texttt{mantenimiento} descrito a continuación.
 
 \codigo{ev35_mantenimiento}{Procedimiento de mantenimiento automático}
 \evid{ev35_mantenimiento}{Creación y ejecución de \texttt{prc\_\allowbreak{}mantenimiento('p\_\allowbreak{}2025')}: índices reconstruidos y particiones analizadas.}{ev35}
+
+\subsubsection{Programación automática del mantenimiento}
+\label{sec:mant_programado}
+
+Para que el mantenimiento no dependa de ejecutarlo a mano, \texttt{docker-compose\allowbreak{}.yaml} incluye un tercer servicio, \texttt{mantenimiento} (contenedor \texttt{bd-lab-final-mant}), análogo a un \textit{job} de \texttt{DBMS\_\allowbreak{}SCHEDULER}. Arranca cuando la base está lista, ejecuta \texttt{prc\_\allowbreak{}mantenimiento('p\_')} (todos los índices de las particiones y \texttt{ANALYZE}) y después repite cada \texttt{MANT\_\allowbreak{}INTERVALO\_\allowbreak{}SEG} segundos (86,400 = una vez al día). Cada corrida queda registrada en la tabla \texttt{log\_\allowbreak{}mantenimiento}, ubicada en el tablespace de auditoría y legible por el administrador y el auditor. Si los scripts del proyecto aún no se han ejecutado, la corrida se omite sin error.
+
+\lstinputlisting[language={},caption={Servicio \texttt{mantenimiento} en docker-compose.yaml}, firstline=54, lastline=75]{../Dockerpfinal/docker-compose.yaml}
+
+\lstinputlisting[language={},caption={Programador \texttt{mantenimiento/mantenimiento.sh}}]{../Dockerpfinal/mantenimiento/mantenimiento.sh}
+
+\lstinputlisting[caption={Corrida registrada en \texttt{rrhh.log\_\allowbreak{}mantenimiento}}]{../Dockerpfinal/mantenimiento/mantenimiento_programado.sql}
+
+Para la demostración se puede forzar una corrida inmediata y revisar su registro:
+
+\begin{lstlisting}[language={},caption={Ejecución manual y verificación del mantenimiento programado}]
+docker exec bd-lab-final-mant sh /mant/mantenimiento.sh --una-vez
+docker logs bd-lab-final-mant
+docker exec -it bd-lab-final psql -c "SELECT * FROM rrhh.log_mantenimiento;"
+\end{lstlisting}
+
+Este servicio se agregó después de generar las capturas, por lo que no tiene una evidencia en imagen; se demuestra en vivo con los comandos anteriores.
 
 \subsection{Truncado controlado de una partición}
 
@@ -799,6 +820,7 @@ Con el contenedor levantado (\texttt{docker start bd-lab-final} si estaba deteni
     \item \textbf{Auditor} (\texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor}): \texttt{SELECT * FROM audit\_\allowbreak{}log\_\allowbreak{}empleados;} muestra quién, qué y cuándo cambió el salario del empleado 100.
     \item \textbf{Superusuario} (\texttt{psql -U postgres -d rrhh}): \texttt{SELECT * FROM rrhh.v\_\allowbreak{}advisor\_\allowbreak{}hallazgos;}, \texttt{SELECT * FROM rrhh.v\_\allowbreak{}advisor\_\allowbreak{}recomendaciones;}, \texttt{SELECT * FROM rrhh.v\_\allowbreak{}uso\_\allowbreak{}tablespaces;}, \texttt{EXPLAIN} de las consultas Q1 a Q3 y \texttt{CALL rrhh.prc\_\allowbreak{}mantenimiento('p\_\allowbreak{}2025');}.
     \item \textbf{Cambio de rol sin reconectar} (desde \texttt{postgres}): \texttt{SET ROLE rol\_\allowbreak{}analista;} y \texttt{SET ROLE rol\_\allowbreak{}auditor;} seguidos de \texttt{RESET ROLE;} permiten mostrar los privilegios de cada rol. Para el nivel MAC, que depende del usuario de sesión (\texttt{session\_\allowbreak{}user}), se reconecta con cada usuario.
+    \item \textbf{Mantenimiento automático:} \texttt{docker exec bd-lab-final-mant} \texttt{sh /mant/\allowbreak{}mantenimiento.sh} \texttt{-{}-una-vez} fuerza una corrida, y \texttt{SELECT * FROM rrhh.log\_\allowbreak{}mantenimiento;} muestra el registro de todas las corridas, incluidas las programadas.
 \end{enumerate}
 
 Para restaurar el escenario completo desde cero: \texttt{docker compose down -v} y ejecutar \texttt{python generar\_\allowbreak{}evidencias.py} (o los diez scripts de \texttt{sql/} en orden). El script \texttt{validar.sh} comprueba el estado final con 12 verificaciones.
@@ -827,7 +849,7 @@ Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se co
     \item \textbf{Carga masiva:} 60,000 registros (por encima del mínimo de 50,000) con un bloque PL/pgSQL por lotes con \texttt{COMMIT} intermedio.
     \item \textbf{Rendimiento:} tres consultas complejas analizadas con \texttt{EXPLAIN}; reducción del costo estimado de 95.4\,\% (Q1), 39.6\,\% (Q2) y 57.7\,\% (Q3), y del tiempo real de entre 70\,\% y 85\,\%, con la recreación del índice de Q1 como índice de cobertura.
     \item \textbf{Advisor y parámetros:} vistas equivalentes a \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}FINDINGS} y \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}RECOMMENDATIONS} que detectaron 5,165,500 filas leídas secuencialmente y, tras indexar, cero lecturas secuenciales en las particiones con datos; ajuste de \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}.
-    \item \textbf{Almacenamiento:} monitoreo de tablespaces y particiones, creación de una partición nueva, reubicación del histórico a otro tablespace (3,020\,kB), procedimiento de mantenimiento y truncado de partición sin afectar el resto de la tabla.
+    \item \textbf{Almacenamiento:} monitoreo de tablespaces y particiones, creación de una partición nueva, reubicación del histórico a otro tablespace (3,020\,kB), procedimiento de mantenimiento programado para ejecutarse una vez al día con registro de cada corrida, y truncado de partición sin afectar el resto de la tabla.
     \item \textbf{Reproducibilidad:} todo el escenario se levanta desde cero con un archivo \texttt{docker-compose\allowbreak{}.yaml} y diez scripts, y las capturas de este documento se generan de la ejecución real.
 \end{itemize}
 
