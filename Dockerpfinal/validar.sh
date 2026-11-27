@@ -46,9 +46,14 @@ psql_as usr_auditor_victor 'VictorAudit2026#' "SELECT count(*) FROM rrhh.audit_l
 denegado usr_auditor_victor 'VictorAudit2026#' "UPDATE rrhh.audit_log_empleados SET salario_nuevo = 1;"
 
 echo "8. Bitacora protegida: DELETE del superusuario rechazado por los triggers..."
-if psql_su "DELETE FROM rrhh.audit_log_empleados;" >/dev/null 2>&1; then
+# El trigger es por fila: sobre una bitacora vacia un DELETE no afectaria filas y no fallaria.
+# Por eso se inserta un evento de prueba y se intenta borrarlo, todo dentro de una transaccion
+# con ROLLBACK (si el borrado se rechaza, no queda nada; si pasara, tampoco se confirma).
+if psql_su "BEGIN; INSERT INTO rrhh.audit_log_empleados (accion, usuario_bd) VALUES ('PRUEBA', current_user); DELETE FROM rrhh.audit_log_empleados; ROLLBACK;" >/dev/null 2>&1; then
   echo "ERROR: la bitacora se pudo borrar"; exit 1
 fi
+psql_su "BEGIN; INSERT INTO rrhh.audit_log_empleados (accion, usuario_bd) VALUES ('PRUEBA', current_user); UPDATE rrhh.audit_log_empleados SET salario_nuevo = 1; ROLLBACK;" >/dev/null 2>&1 \
+  && { echo "ERROR: la bitacora se pudo modificar"; exit 1; } || true
 
 echo "8b. Separacion de funciones: el admin no puede evadir la auditoria ni cambiar el MAC..."
 ADM='AdminSecure2026#'
