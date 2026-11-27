@@ -45,7 +45,7 @@ echo "7. Auditor: ve nivel 3, lee la bitacora y no puede modificarla..."
 psql_as usr_auditor_victor 'VictorAudit2026#' "SELECT count(*) FROM rrhh.audit_log_empleados;" >/dev/null
 denegado usr_auditor_victor 'VictorAudit2026#' "UPDATE rrhh.audit_log_empleados SET salario_nuevo = 1;"
 
-echo "8. Bitacora inmutable incluso para el superusuario..."
+echo "8. Bitacora protegida: DELETE del superusuario rechazado por los triggers..."
 if psql_su "DELETE FROM rrhh.audit_log_empleados;" >/dev/null 2>&1; then
   echo "ERROR: la bitacora se pudo borrar"; exit 1
 fi
