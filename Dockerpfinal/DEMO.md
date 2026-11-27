@@ -10,8 +10,12 @@ Comandos para la exposición, en el orden en que se presentan. Todos se ejecutan
 cd "C:\PROYECTOS LATEX y otros\BDA\BDAvanzadas_Equipo8_ProyectoFinal\Dockerpfinal"
 docker compose start          # o "docker compose up -d" si los contenedores no existen
 docker ps                     # bd-lab-final (healthy) y bd-lab-final-mant deben estar "Up"
-bash validar.sh               # opcional: 14 verificaciones, debe terminar en "Validacion finalizada correctamente."
+& "C:\Program Files\Git\bin\bash.exe" .\validar.sh   # opcional: 14 verificaciones, debe terminar en "Validacion finalizada correctamente."
 ```
+
+> En PowerShell, `bash` abre el bash de WSL (sin distribución instalada falla con
+> `execvpe(/bin/bash) failed`). Por eso `validar.sh` se corre con el bash de Git, como arriba.
+> Desde una terminal de Git Bash basta con `bash validar.sh`.
 
 > En Git Bash, ejecuta antes `export MSYS_NO_PATHCONV=1`. Si no, las rutas como `/mant/...` se
 > convierten en rutas de Windows y los comandos fallan. En PowerShell no hace falta.
