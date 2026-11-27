@@ -19,4 +19,17 @@ DROP TABLE prueba_admin;
 UPDATE audit_log_empleados SET salario_nuevo = 1;
 
 -- usr_admin
+-- Separacion de funciones: el admin no es dueno de los objetos
+ALTER TABLE empleados DISABLE TRIGGER trg_audit_empleados;
+
+-- usr_admin
+DROP TABLE audit_log_empleados;
+
+-- usr_admin
+TRUNCATE empleados CASCADE;
+
+-- usr_admin
+UPDATE autorizaciones SET nivel = 3 WHERE usuario = 'usr_analista_karla';
+
+-- usr_admin
 SELECT hist_id, emp_id, salario, vigente_desde, motivo FROM historial_salarios;

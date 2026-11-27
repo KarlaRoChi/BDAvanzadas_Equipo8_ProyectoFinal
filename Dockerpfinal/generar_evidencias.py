@@ -20,6 +20,7 @@ DOC = os.path.normpath(os.path.join(HERE, "..", "documento"))
 OUT = os.path.join(DOC, "img")
 SQLOUT = os.path.join(DOC, "sql")
 C = "bd-lab-final"
+MANT = "bd-lab-final-mant"   # servicio de mantenimiento programado
 DB = "rrhh"
 PS = "PS D:\\PROYECTOS LATEX y otros\\BDA\\Dockerpfinal> "
 
@@ -268,6 +269,9 @@ def main():
         "SELECT emp_id, nombre_completo, nombre_depto, nombre_rol, salario, clasificacion_nivel\n"
         "FROM v_resumen_empleados ORDER BY emp_id LIMIT 3;",
         "SELECT * FROM departamentos;",
+        "-- Intento de fuga por error: con security_barrier el filtro MAC se aplica primero\n"
+        "SELECT count(*) AS visibles FROM v_resumen_empleados\n"
+        "WHERE 1 / (CASE WHEN clasificacion_nivel = 3 THEN 0 ELSE 1 END) = 1;",
         "SELECT * FROM empleados LIMIT 1;",
         "DELETE FROM empleados WHERE emp_id = 1;",
         "SELECT * FROM audit_log_empleados;",
@@ -283,6 +287,11 @@ def main():
         "DELETE FROM empleados WHERE emp_id = 60001;",
         "CREATE TABLE prueba_admin (id int);\nDROP TABLE prueba_admin;",
         "UPDATE audit_log_empleados SET salario_nuevo = 1;",
+        "-- Separacion de funciones: el admin no es dueno de los objetos\n"
+        "ALTER TABLE empleados DISABLE TRIGGER trg_audit_empleados;",
+        "DROP TABLE audit_log_empleados;",
+        "TRUNCATE empleados CASCADE;",
+        "UPDATE autorizaciones SET nivel = 3 WHERE usuario = 'usr_analista_karla';",
         "SELECT hist_id, emp_id, salario, vigente_desde, motivo FROM historial_salarios;",
     ])
 
@@ -324,10 +333,16 @@ def main():
              ["ev37_parametros_actuales", "ev38_alter_system", "ev39_reevaluacion", "ev40_aplicar_recomendacion", "ev41_verificacion_advisor"])
     quit_psql("postgres")
 
-    # 11. Cierre
-    mark("ev42_cierre")
-    ps(f"docker stop {C}", ["docker", "stop", C])
-    ps("docker ps -a", ["docker", "ps", "-a"])
+    # 11. Mantenimiento programado (servicio "mantenimiento" de docker-compose)
+    mark("ev42_mant_programado")
+    ps(f"docker logs {MANT}", ["docker", "logs", MANT])
+    ps(f"docker exec {MANT} sh /mant/mantenimiento.sh --una-vez",
+       ["docker", "exec", MANT, "sh", "/mant/mantenimiento.sh", "--una-vez"])
+
+    # 12. Cierre
+    mark("ev43_cierre")
+    ps("docker compose stop", ["docker", "compose", "stop"])
+    ps(f"docker ps -a --filter name={C}", ["docker", "ps", "-a", "--filter", f"name={C}"])
 
     marks.append(("__fin__", len(lines)))
     for (name, a), (_, b) in zip(marks, marks[1:]):
@@ -337,7 +352,7 @@ def main():
     for f in os.listdir(SQLOUT):
         os.remove(os.path.join(SQLOUT, f))
     for name, code in codes.items():
-        if name in ("ev01_entorno", "ev42_cierre"):
+        if name in ("ev01_entorno", "ev42_mant_programado", "ev43_cierre"):
             continue
         with open(os.path.join(SQLOUT, name + ".sql"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(code.strip("\n") + "\n")

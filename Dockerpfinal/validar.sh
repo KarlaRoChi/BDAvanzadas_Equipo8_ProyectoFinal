@@ -50,6 +50,18 @@ if psql_su "DELETE FROM rrhh.audit_log_empleados;" >/dev/null 2>&1; then
   echo "ERROR: la bitacora se pudo borrar"; exit 1
 fi
 
+echo "8b. Separacion de funciones: el admin no puede evadir la auditoria ni cambiar el MAC..."
+ADM='AdminSecure2026#'
+# Cada intento va en una transaccion con ROLLBACK, por si alguno llegara a ejecutarse
+denegado usr_admin "$ADM" "BEGIN; ALTER TABLE rrhh.empleados DISABLE TRIGGER trg_audit_empleados; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; DROP TABLE rrhh.audit_log_empleados; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; TRUNCATE rrhh.empleados CASCADE; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; UPDATE rrhh.autorizaciones SET nivel = 3; ROLLBACK;"
+[ "$(psql_su "SELECT count(*) FROM pg_class WHERE relnamespace='rrhh'::regnamespace AND relowner='usr_admin'::regrole;")" = "0" ]
+
+echo "8c. La vista MAC no filtra filas ocultas por mensajes de error (security_barrier)..."
+[ "$(psql_as usr_analista_karla 'KarlaAnalyst2026#' "SELECT count(*) FROM rrhh.v_resumen_empleados WHERE 1/(CASE WHEN clasificacion_nivel = 3 THEN 0 ELSE 1 END) = 1;")" = "40000" ]
+
 echo "9. Autenticacion: contrasena incorrecta debe FALLAR..."
 denegado usr_admin 'ClaveIncorrecta' "SELECT 1;"
 
@@ -63,5 +75,12 @@ psql_su "SHOW shared_preload_libraries;" | grep -q pg_stat_statements
 
 echo "12. Datos historicos reubicados en ts_rrhh_hist..."
 [ "$(psql_su "SELECT t.spcname FROM pg_class c JOIN pg_tablespace t ON t.oid=c.reltablespace WHERE c.oid='rrhh.p_historico'::regclass;")" = "ts_rrhh_hist" ]
+
+echo "13. Tamano asignado a los cinco tablespaces y ninguno en ALERTA..."
+[ "$(psql_su "SELECT count(*) FROM rrhh.capacidad_tablespaces;")" = "5" ]
+[ "$(psql_su "SELECT count(*) FROM rrhh.v_uso_tablespaces WHERE estado = 'ALERTA';")" = "0" ]
+
+echo "14. Servicio de mantenimiento programado activo..."
+docker ps --filter "name=bd-lab-final-mant" --filter "status=running" | grep -q bd-lab-final-mant
 
 echo "Validacion finalizada correctamente."

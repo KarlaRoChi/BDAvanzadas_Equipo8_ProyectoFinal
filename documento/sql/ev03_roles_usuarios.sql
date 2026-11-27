@@ -1,4 +1,8 @@
--- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion
+-- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion.
+--    rol_propietario es el dueno de los objetos y nadie inicia sesion con el ni es
+--    miembro suyo (separacion de funciones): asi el administrador opera los datos,
+--    pero no puede borrar la bitacora, desactivar triggers ni cambiar politicas.
+CREATE ROLE rol_propietario NOLOGIN;
 CREATE ROLE rol_admin    NOLOGIN;
 CREATE ROLE rol_analista NOLOGIN;
 CREATE ROLE rol_auditor  NOLOGIN;

@@ -87,6 +87,7 @@
     {Ñ}{{\~N}}1
     {¿}{{?`}}1
     {¡}{{!`}}1
+    {~}{{$\sim$}}1
 }
 
 % Código SQL generado junto con cada evidencia (carpeta sql/)
@@ -180,7 +181,7 @@
 
 Aplicar los conocimientos del semestre de Bases de Datos Avanzadas en un sistema de gestión de empleados que integre diseño con tablas particionadas y múltiples tablespaces, seguridad multinivel (RBAC, DAC y MAC), auditoría automática, optimización del rendimiento y administración del almacenamiento, documentando cada paso con evidencias reproducibles.
 
-El enunciado está redactado para Oracle (SQL*Plus, \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}*}, \texttt{DBMS\_\allowbreak{}XPLAN}). Igual que en las prácticas 1 a 4, el proyecto se implementa en \textbf{PostgreSQL 16 ejecutado en un contenedor Docker}; en la sección~\ref{sec:equivalencias} se indica cómo se tradujo cada elemento. Todas las cifras de este documento provienen de la ejecución real de los scripts (transcripción completa en \texttt{Dockerpfinal/transcripcion.txt}).
+El enunciado está redactado para Oracle (SQL*Plus, \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}*}, \texttt{DBMS\_\allowbreak{}XPLAN}). Igual que en las prácticas 1 a 4, el proyecto se implementa en \textbf{PostgreSQL 16 ejecutado en un contenedor Docker}; en la sección~\ref{sec:equivalencias} se indica cómo se tradujo cada elemento. Todas las cifras de este documento provienen de la ejecución real de los scripts (transcripción completa en \texttt{Dockerpfinal/transcripcion.txt}). Las evidencias tienen formato de terminal, pero no son capturas de pantalla: \texttt{generar\_\allowbreak{}evidencias.py} ejecuta los diez scripts sobre un contenedor recién creado y dibuja como imagen la salida real de \texttt{psql}, de modo que cualquiera puede regenerarlas y obtener los mismos costos y conteos (los milisegundos varían ligeramente con el equipo).
 
 \subsection{Requerimientos y dónde se cubren}
 
@@ -192,7 +193,7 @@ El enunciado está redactado para Oracle (SQL*Plus, \texttt{DBA\_\allowbreak{}AD
 \toprule
 \textbf{Requerimiento del enunciado} & \textbf{Sección} \\
 \midrule
-Esquema de empleados, departamentos y roles con tablas particionadas y varios tablespaces & \ref{sec:diseno} \\
+Esquema de empleados, departamentos y roles con tablas particionadas y varios tablespaces (con su tamaño definido) & \ref{sec:diseno} \\
 Usuarios admin/analista/auditor, roles, DAC, MAC y RBAC; pruebas de acceso, modificación y auditoría & \ref{sec:seguridad}, \ref{sec:pruebas} \\
 Vista y trigger de auditoría y control de cambios & \ref{sec:auditoria} \\
 Inserción masiva (mín. 50,000 registros) con bloque procedimental & \ref{sec:carga} \\
@@ -200,7 +201,7 @@ Análisis de 3 consultas complejas con \texttt{EXPLAIN} & \ref{sec:antes} \\
 Recreación de índices y evaluación del costo & \ref{sec:indices} \\
 Ajuste de parámetros (\texttt{DB\_\allowbreak{}BLOCK\_\allowbreak{}SIZE}, etc.) y advisor & \ref{sec:advisor}, \ref{sec:parametros} \\
 Monitoreo de tablespaces, ajustes dinámicos y mantenimiento automático & \ref{sec:almacenamiento} \\
-Comparativo antes/después y recomendaciones para producción & \ref{sec:comparativo}, \ref{sec:recomendaciones} \\
+Comparativo antes/después y propuesta para producción & \ref{sec:comparativo}, \ref{sec:recomendaciones} \\
 Guía de demostración con cambio de rol & \ref{sec:demo} \\
 Conclusión de lo logrado y lo no cubierto & \ref{sec:conclusiones} \\
 \bottomrule
@@ -251,7 +252,7 @@ El entorno se define de forma declarativa en \texttt{docker-compose\allowbreak{}
     \item El script \texttt{initdb/01-hba-scram.sh} deja las conexiones TCP de loopback con \texttt{scram-sha-256}. Así, las pruebas con \texttt{psql -h localhost} validan de verdad la contraseña de cada usuario, mientras que el socket Unix queda en \texttt{trust} (análogo a \texttt{/ as sysdba}).
 \end{itemize}
 
-Además se precarga \texttt{pg\_\allowbreak{}stat\_\allowbreak{}statements}, base del \textit{advisor} que se construye en la sección~\ref{sec:advisor}, y se monta la carpeta \texttt{sql/} con los diez scripts numerados del proyecto. El archivo siguiente muestra los dos servicios con los que se generaron las evidencias; la versión final agrega un tercero, \texttt{mantenimiento}, que programa el mantenimiento automático (sección~\ref{sec:mant_programado}).
+Además se precarga \texttt{pg\_\allowbreak{}stat\_\allowbreak{}statements}, base del \textit{advisor} que se construye en la sección~\ref{sec:advisor}, y se monta la carpeta \texttt{sql/} con los diez scripts numerados del proyecto. El archivo siguiente muestra los dos servicios base; el tercero, \texttt{mantenimiento}, programa el mantenimiento automático y se describe en la sección~\ref{sec:mant_programado}.
 
 \begin{lstlisting}[language={},caption={Archivo docker-compose.yaml del Proyecto Final}]
 services:
@@ -331,19 +332,41 @@ Se crean cinco tablespaces, cada uno con un directorio propio dedicado a un tipo
 \codigo{ev02_tablespaces}{Creación de los cinco tablespaces del sistema}
 \evid{ev02_tablespaces}{Tablespaces creados y listados con \texttt{\textbackslash db+}.}{ev02}
 
+\paragraph{Dimensionamiento.} En Oracle el tamaño se fija en el \textit{datafile} (\texttt{SIZE}, \texttt{AUTOEXTEND ... MAXSIZE}); en PostgreSQL un tablespace es un directorio y no admite tamaño en \texttt{CREATE TABLESPACE}. Por eso el tamaño de cada uno se definió por cálculo, para un horizonte de \textbf{300,000 empleados} (cinco veces la carga actual), a partir de los bytes por fila \textbf{medidos} (4,452 + 3,020\,kB de particiones $\approx$ 6,972\,kB / 60,000 filas $\approx$ 120\,B por fila de datos y 6,772\,kB / 60,000 $\approx$ 115\,B por fila de índices). El tamaño asignado forma parte del \textbf{script de creación}: \texttt{01\_\allowbreak{}instancia\_\allowbreak{}roles.sql} lo registra en la tabla \texttt{capacidad\_\allowbreak{}tablespaces} justo después de crear el esquema (listado y evidencia~\ref{fig:ev04}), y la vista \texttt{v\_\allowbreak{}uso\_\allowbreak{}tablespaces} compara el uso real contra él y marca \texttt{ALERTA} al llegar al 80\,\% (sección~\ref{sec:almacenamiento}). PostgreSQL no impide escribir al pasar ese tamaño: en producción cada directorio se montaría en un volumen de ese tamaño, que es el límite físico equivalente a \texttt{MAXSIZE}.
+
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.3}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lp{0.24\textwidth}p{0.25\textwidth}rr}
+\toprule
+\textbf{Tablespace} & \textbf{Contenido} & \textbf{Estimación (300,000 empleados)} & \textbf{Asignado} & \textbf{Uso actual} \\
+\midrule
+\texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}data} & Catálogos, historial, niveles MAC y tablas de afinación & $<$ 1\,MB & 32\,MB & 100\,kB \\
+\texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}part} & Particiones activas de \texttt{empleados} & 300,000 $\times$ 120\,B $\approx$ 35\,MB & 128\,MB & 4,452\,kB \\
+\texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx} & Llaves primarias e índices secundarios & 300,000 $\times$ 115\,B $\approx$ 33\,MB & 128\,MB & 6,772\,kB \\
+\texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}audit} & Bitácora de auditoría y registro del mantenimiento & 1,000,000 eventos $\times$ 120\,B $\approx$ 115\,MB & 256\,MB & 68\,kB \\
+\texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}hist} & Particiones históricas (antes de 2021) & 3\,MB hoy, crece al archivar & 64\,MB & 3,020\,kB \\
+\bottomrule
+\end{tabular}
+\caption{Tamaño definido para cada tablespace. En los que crecen con los empleados (\texttt{part}, \texttt{idx}, \texttt{audit}) el asignado deja una holgura de 2 a 4 veces sobre la estimación; \texttt{data} e \texttt{hist} tienen un mínimo fijo. El uso actual es el medido al final del proyecto, después de eliminar el índice de control y de la primera corrida del mantenimiento programado.}
+\label{tab:dimensionamiento}
+\end{table}
+
 \subsection{Roles, usuarios y acceso a la base}
 
-Los privilegios se agrupan en tres roles sin inicio de sesión (\texttt{rol\_\allowbreak{}admin}, \texttt{rol\_\allowbreak{}analista}, \texttt{rol\_\allowbreak{}auditor}), y a cada integrante del equipo se le crea un usuario ficticio con contraseña y un rol: \texttt{usr\_\allowbreak{}admin}, \texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla} y \texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor}. Se retira el acceso por defecto a \texttt{PUBLIC} y solo el administrador puede crear objetos en los tablespaces.
+Los privilegios se agrupan en tres roles sin inicio de sesión (\texttt{rol\_\allowbreak{}admin}, \texttt{rol\_\allowbreak{}analista}, \texttt{rol\_\allowbreak{}auditor}), y a cada integrante del equipo se le crea un usuario ficticio con contraseña y un rol: \texttt{usr\_\allowbreak{}admin}, \texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla} y \texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor}. Un cuarto rol, \texttt{rol\_\allowbreak{}propietario}, es el dueño del esquema y de sus objetos; no inicia sesión ni tiene miembros, de modo que ningún usuario de trabajo es dueño de nada (sección~\ref{sec:seguridad}). Se retira el acceso por defecto a \texttt{PUBLIC} y solo el administrador puede crear objetos en los tablespaces.
 
 \codigo{ev03_roles_usuarios}{Roles personalizados y usuarios del equipo}
 \evid{ev03_roles_usuarios}{Creación de roles, usuarios y asignación de rol.}{ev03}
 
-\codigo{ev04_esquema_acceso}{Control de acceso a la base, tablespaces y esquema \texttt{rrhh}}
-\evid{ev04_esquema_acceso}{Restricción de acceso a la base y listado de roles con \texttt{\textbackslash du}.}{ev04}
+\codigo{ev04_esquema_acceso}{Control de acceso a la base, tablespaces, esquema \texttt{rrhh} y tamaño asignado a cada tablespace}
+\evid{ev04_esquema_acceso}{Restricción de acceso a la base, listado de roles con \texttt{\textbackslash du} y tamaño asignado a cada tablespace (\texttt{capacidad\_\allowbreak{}tablespaces}).}{ev04}
 
 \subsection{Esquema relacional y particionamiento}
 
-El esquema \texttt{rrhh} (propiedad de \texttt{rol\_\allowbreak{}admin}) contiene:
+El esquema \texttt{rrhh} (propiedad de \texttt{rol\_\allowbreak{}propietario}; \texttt{usr\_\allowbreak{}admin} lo construye y al cerrar el diseño la propiedad se transfiere) contiene:
 
 \begin{itemize}
     \item \texttt{roles} y \texttt{departamentos}: catálogos en \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}data}, con sus índices de llave en \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx}.
@@ -364,6 +387,8 @@ El esquema \texttt{rrhh} (propiedad de \texttt{rol\_\allowbreak{}admin}) contien
 
 La vista \texttt{v\_\allowbreak{}resumen\_\allowbreak{}empleados} une empleados, departamentos y roles y expone solo las filas cuyo nivel de clasificación no excede la autorización del usuario que consulta (función \texttt{nivel\_\allowbreak{}usuario()}, definida con \texttt{SECURITY DEFINER} para leer la tabla \texttt{autorizaciones} sin exponerla). Es la vista del requerimiento y también el punto de acceso del analista.
 
+La vista se crea con \texttt{security\_\allowbreak{}barrier}. Sin esa opción el optimizador puede evaluar antes un filtro escrito por el usuario que el filtro MAC, y los mensajes de error de ese filtro revelan datos de filas ocultas. Lo comprobamos con la versión anterior del proyecto: la analista obtenía \texttt{division by zero} con \texttt{1/(CASE WHEN clasificacion\_\allowbreak{}nivel = 3 THEN 0 ELSE 1 END)}, lo que prueba que existen filas secretas, y \texttt{invalid input syntax for type integer: "42085.07"} con \texttt{(salario::text)::int}, que muestra el salario de un empleado de nivel 3. Con \texttt{security\_\allowbreak{}barrier} el filtro MAC se aplica primero y la misma consulta devuelve las 40,000 filas visibles sin error (evidencia~\ref{fig:ev14}).
+
 \codigo{ev08_mac_vista}{Niveles MAC, función \texttt{nivel\_\allowbreak{}usuario()} y vista \texttt{v\_\allowbreak{}resumen\_\allowbreak{}empleados}}
 \evid{ev08_mac_vista}{Tabla de autorizaciones, función y vista de negocio.}{ev08}
 
@@ -377,8 +402,9 @@ Los tres modelos se combinan en capas:
 
 \begin{description}
     \item[RBAC (basado en roles):] los privilegios se otorgan a los roles, no a las personas; para dar o quitar acceso basta con cambiar la pertenencia a un rol.
-    \item[DAC (discrecional):] el dueño de un objeto (el administrador) decide con \texttt{GRANT}/\texttt{REVOKE} quién accede a él; se demuestra otorgando y retirando \texttt{SELECT} sobre \texttt{empleados} a Karla.
+    \item[DAC (discrecional):] quien tiene un privilegio con \texttt{WITH GRANT OPTION} decide con \texttt{GRANT}/\texttt{REVOKE} a quién se lo delega. El administrador recibe así la lectura de \texttt{empleados}, y se demuestra otorgando y retirando \texttt{SELECT} a Karla.
     \item[MAC (obligatorio):] aun con \texttt{GRANT}, el usuario solo ve las filas con \texttt{clasificacion\_\allowbreak{}nivel} menor o igual a su autorización, mediante políticas \textit{Row Level Security} con \texttt{FORCE}, que se aplican también a quien recibe permisos directos sobre la tabla. Niveles: administrador 3, Karla 2, Víctor 3. El MAC restringe al analista y al auditor; el administrador tiene acceso total por diseño (la política \texttt{pol\_\allowbreak{}admin\_\allowbreak{}escritura} le permite todas las filas), y el superusuario \texttt{postgres} siempre omite RLS, como ocurre con \texttt{SYS} en Oracle.
+    \item[Separación de funciones:] en PostgreSQL el dueño de una tabla puede desactivar sus triggers, quitarle el RLS o borrarla, y el dueño de un esquema puede borrar cualquier objeto dentro de él. Por eso el administrador \textbf{no es dueño de nada}: \texttt{REASSIGN OWNED BY usr\_\allowbreak{}admin TO rol\_\allowbreak{}propietario} transfiere los objetos que creó, y \texttt{rol\_\allowbreak{}admin} solo recibe \texttt{SELECT}, \texttt{INSERT}, \texttt{UPDATE} y \texttt{DELETE}, sin \texttt{TRUNCATE} (vaciaría la tabla sin disparar la auditoría por fila) ni \texttt{TRIGGER}, y solo lectura sobre la bitácora y sobre \texttt{autorizaciones} (si pudiera escribir ahí, podría subirle el nivel MAC a cualquiera). En la versión anterior del proyecto comprobamos que el administrador podía desactivar el trigger de auditoría, borrar la bitácora con \texttt{DROP TABLE}, vaciar \texttt{empleados} con \texttt{TRUNCATE ... CASCADE} y elevar a Karla a nivel 3; ahora las cuatro operaciones se rechazan (evidencia~\ref{fig:ev15}).
 \end{description}
 
 \begin{table}[H]
@@ -389,7 +415,8 @@ Los tres modelos se combinan en capas:
 \toprule
 \textbf{Rol} & \textbf{Usuario (nivel MAC)} & \textbf{Privilegios} \\
 \midrule
-\texttt{rol\_\allowbreak{}admin} & \texttt{usr\_\allowbreak{}admin} (3) & Control total del esquema; en la bitácora solo \texttt{SELECT} \\
+\texttt{rol\_\allowbreak{}admin} & \texttt{usr\_\allowbreak{}admin} (3) & \texttt{SELECT}/\texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE} sobre los datos y \texttt{CREATE} en el esquema; solo \texttt{SELECT} en la bitácora y en \texttt{autorizaciones}; \texttt{SELECT} sobre \texttt{empleados} con \texttt{GRANT OPTION} \\
+\texttt{rol\_\allowbreak{}propietario} & (ninguno) & Dueño del esquema y de sus objetos; sin inicio de sesión ni miembros \\
 \texttt{rol\_\allowbreak{}analista} & \texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla} (2) & \texttt{SELECT} sobre \texttt{v\_\allowbreak{}resumen\_\allowbreak{}empleados} y \texttt{departamentos} \\
 \texttt{rol\_\allowbreak{}auditor} & \texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor} (3) & \texttt{SELECT} sobre \texttt{audit\_\allowbreak{}log\_\allowbreak{}empleados} y la vista \\
 \bottomrule
@@ -398,10 +425,10 @@ Los tres modelos se combinan en capas:
 \end{table}
 
 \codigo{ev11_rbac_dac}{Privilegios por rol (RBAC/DAC)}
-\evid{ev11_rbac_dac}{Asignación de privilegios a los tres roles.}{ev11}
+\evid{ev11_rbac_dac}{Transferencia de la propiedad a \texttt{rol\_\allowbreak{}propietario} y asignación de privilegios a los tres roles.}{ev11}
 
 \codigo{ev12_mac_rls}{Niveles MAC, políticas \textit{Row Level Security} y resumen de privilegios}
-\evid{ev12_mac_rls}{Políticas MAC y resumen de privilegios efectivos por rol (\texttt{information\_\allowbreak{}schema.role\_\allowbreak{}table\_\allowbreak{}grants}).}{ev12}
+\evid{ev12_mac_rls}{Políticas MAC, privilegios efectivos por rol (\texttt{information\_\allowbreak{}schema.role\_\allowbreak{}table\_\allowbreak{}grants}) y propietario de cada objeto.}{ev12}
 
 % ==========================================
 % 5. AUDITORIA
@@ -415,7 +442,7 @@ Dos decisiones de diseño:
 
 \begin{itemize}
     \item La función del trigger es \texttt{SECURITY DEFINER}: registra el evento aunque el usuario que modifica no tenga ningún privilegio sobre la bitácora.
-    \item La bitácora es \textbf{inmutable}: los triggers \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}inmutable} y \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}no\_\allowbreak{}truncate} bloquean \texttt{UPDATE}, \texttt{DELETE} y \texttt{TRUNCATE} para cualquier usuario que use SQL normal, incluido \texttt{postgres}, y el administrador ni siquiera tiene permiso de escritura sobre ella. \textbf{Límite:} un superusuario podría desactivar antes los triggers (\texttt{ALTER TABLE ... DISABLE TRIGGER} o \texttt{session\_\allowbreak{}replication\_\allowbreak{}role = replica}, el mismo mecanismo que se usa en la carga masiva); por eso, en producción, la bitácora debe copiarse además a un servidor externo (sección~\ref{sec:recomendaciones}).
+    \item La bitácora es \textbf{inmutable}: los triggers \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}inmutable} y \texttt{trg\_\allowbreak{}bitacora\_\allowbreak{}no\_\allowbreak{}truncate} bloquean \texttt{UPDATE}, \texttt{DELETE} y \texttt{TRUNCATE} para cualquier usuario que use SQL normal, incluido \texttt{postgres}. El administrador no tiene permiso de escritura sobre ella y, como no es dueño de los objetos, tampoco puede borrarla ni desactivar el trigger de auditoría de \texttt{empleados}. \textbf{Límite:} un superusuario podría desactivar antes los triggers (\texttt{ALTER TABLE ... DISABLE TRIGGER} o \texttt{session\_\allowbreak{}replication\_\allowbreak{}role = replica}, el mismo mecanismo que se usa en la carga masiva); por eso, en producción, la bitácora debe copiarse además a un servidor externo (sección~\ref{sec:recomendaciones}).
 \end{itemize}
 
 \codigo{ev09_trigger_auditoria}{Bitácora y trigger de auditoría de empleados}
@@ -437,7 +464,7 @@ Se cargan \textbf{60,000 empleados simulados} (el mínimo exigido es 50,000) con
     \item \texttt{session\_\allowbreak{}replication\_\allowbreak{}role = replica} desactiva los triggers durante la carga: sin esto se generarían 60,000 eventos artificiales en la bitácora. Las operaciones reales posteriores sí se auditan. Se restablece a \texttt{origin} al terminar.
     \item \texttt{setseed(0.42)} fija la semilla de \texttt{random()}, por lo que los salarios son reproducibles en cada ejecución.
     \item El bloque \texttt{DO} recorre \texttt{FOR v\_\allowbreak{}ini IN 1..v\_\allowbreak{}total BY v\_\allowbreak{}lote} e inserta lotes de 5,000 filas con un \texttt{INSERT ... SELECT} sobre \texttt{generate\_\allowbreak{}series}, mucho más eficiente que insertar fila por fila. Hace \texttt{COMMIT} por lote (permitido dentro de \texttt{DO}) y avisa el avance con \texttt{RAISE NOTICE}.
-    \item Los datos se distribuyen de forma determinista: departamento y rol cíclicos, nivel de clasificación $1 + (i \bmod 3)$, salario aleatorio entre 12,000 y 95,000 y fechas de ingreso desde 2018-01-01 (cubren cuatro de las cinco particiones). \texttt{ANALYZE} actualiza las estadísticas.
+    \item Los datos se distribuyen de forma determinista: departamento $i \bmod 4$ y rol $\lfloor i/4 \rfloor \bmod 4$ (independientes entre sí, así que aparecen las 16 combinaciones departamento--rol con 3,750 empleados cada una), nivel de clasificación $1 + (i \bmod 3)$, salario aleatorio entre 12,000 y 95,000 y fechas de ingreso desde 2018-01-01 (cubren cuatro de las cinco particiones). \texttt{ANALYZE} actualiza las estadísticas.
 \end{enumerate}
 
 \codigo{ev13_carga_masiva}{Carga masiva de 60,000 empleados con un bloque \texttt{DO}}
@@ -475,17 +502,17 @@ Cada prueba se hace con una conexión TCP (\texttt{psql -h localhost}) con la co
 
 \subsection{Analista (\texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla}, nivel 2)}
 
-La primera conexión usa una contraseña incorrecta y es rechazada. Con la correcta, Karla ve 40,000 de las 60,000 filas a través de la vista (MAC), puede consultar departamentos y no puede leer \texttt{empleados}, borrar, leer la bitácora ni crear tablas.
+La primera conexión usa una contraseña incorrecta y es rechazada. Con la correcta, Karla ve 40,000 de las 60,000 filas a través de la vista (MAC) y puede consultar departamentos. El intento de descubrir filas ocultas con una división entre cero devuelve las mismas 40,000 filas sin error, gracias a \texttt{security\_\allowbreak{}barrier}. No puede leer \texttt{empleados}, borrar, leer la bitácora ni crear tablas.
 
 \codigo{ev14_prueba_analista}{Pruebas del rol analista}
 \evid{ev14_prueba_analista}{Sesión de Karla: contraseña incorrecta, lectura permitida a la vista y denegaciones.}{ev14}
 
 \subsection{Administrador (\texttt{usr\_\allowbreak{}admin}, nivel 3)}
 
-El administrador modifica un salario, inserta y elimina un empleado, y crea y borra una tabla. Intenta modificar la bitácora y se le niega. El trigger registró las tres operaciones y el cambio de salario alimentó \texttt{historial\_\allowbreak{}salarios}.
+El administrador modifica un salario, inserta y elimina un empleado, y crea y borra una tabla. Se le niega modificar la bitácora, y también desactivar el trigger de auditoría, borrar la bitácora con \texttt{DROP TABLE}, vaciar \texttt{empleados} con \texttt{TRUNCATE} y cambiar los niveles MAC: no es dueño de los objetos (separación de funciones). El trigger registró las tres operaciones y el cambio de salario alimentó \texttt{historial\_\allowbreak{}salarios}.
 
 \codigo{ev15_prueba_admin}{Pruebas del rol administrador}
-\evid{ev15_prueba_admin}{Sesión del administrador: DML, DDL, bitácora protegida e historial de salarios.}{ev15}
+\evid{ev15_prueba_admin}{Sesión del administrador: DML, DDL, bitácora protegida, intentos de evadir la auditoría o cambiar el MAC (rechazados) e historial de salarios.}{ev15}
 
 \subsection{Auditor (\texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor}, nivel 3)}
 
@@ -516,9 +543,12 @@ El administrador otorga \texttt{SELECT} sobre \texttt{empleados} a Karla (DAC): 
 \texttt{SELECT} en \texttt{audit\_\allowbreak{}log\_\allowbreak{}empleados} & Sí & Denegado & Sí \\
 \texttt{UPDATE} en \texttt{audit\_\allowbreak{}log\_\allowbreak{}empleados} & Denegado & Denegado & Denegado \\
 \texttt{CREATE TABLE} en \texttt{rrhh} & Sí & Denegado & Sin privilegio$^{*}$ \\
+\texttt{DISABLE TRIGGER} de auditoría / \texttt{DROP} de la bitácora & Denegado & Sin privilegio$^{*}$ & Sin privilegio$^{*}$ \\
+\texttt{TRUNCATE} en \texttt{empleados} & Denegado & Sin privilegio$^{*}$ & Sin privilegio$^{*}$ \\
+\texttt{UPDATE} en \texttt{autorizaciones} (nivel MAC) & Denegado & Sin privilegio$^{*}$ & Sin privilegio$^{*}$ \\
 \bottomrule
 \end{tabular}
-\caption{Matriz de resultados de las pruebas de acceso. $^{*}$El rol auditor no recibió ese privilegio (sección~\ref{sec:seguridad}); la operación no se ejecutó en sus pruebas.}
+\caption{Matriz de resultados de las pruebas de acceso. $^{*}$El rol no recibió ese privilegio (sección~\ref{sec:seguridad}); la operación no se ejecutó en sus pruebas.}
 \label{tab:matriz}
 \end{table}
 
@@ -583,7 +613,7 @@ PostgreSQL no incluye un asesor automático equivalente a \texttt{DBA\_\allowbre
 \codigo{ev24_advisor_vistas}{Vistas del advisor y ejecución de la carga de trabajo}
 \evid{ev24_advisor_vistas}{Creación de las vistas del advisor.}{ev24}
 
-Con la carga de trabajo ejecutada 20 veces por consulta, el advisor reporta \textbf{4 particiones con lecturas secuenciales} (5,165,500 filas leídas en total) y recomienda crear índices sobre las columnas de filtro de las sentencias más costosas.
+Con la carga de trabajo ejecutada 20 veces por consulta, el advisor reporta \textbf{4 particiones con lecturas secuenciales} (5,285,500 filas leídas en total) y recomienda crear índices sobre las columnas de filtro de las sentencias más costosas.
 
 \evid{ev25_advisor_hallazgos}{Hallazgos y recomendación del advisor antes de indexar.}{ev25}
 
@@ -595,10 +625,10 @@ Con la carga de trabajo ejecutada 20 veces por consulta, el advisor reporta \tex
 \toprule
 \textbf{Partición} & \textbf{Lecturas secuenciales} & \textbf{Filas leídas} \\
 \midrule
-\texttt{p\_\allowbreak{}historico} & 81 & 1,753,600 \\
-\texttt{p\_\allowbreak{}2023\_\allowbreak{}2024} & 106 & 1,535,100 \\
-\texttt{p\_\allowbreak{}2021\_\allowbreak{}2022} & 81 & 1,168,000 \\
-\texttt{p\_\allowbreak{}2025\_\allowbreak{}2026} & 81 & 708,800 \\
+\texttt{p\_\allowbreak{}historico} & 83 & 1,797,440 \\
+\texttt{p\_\allowbreak{}2023\_\allowbreak{}2024} & 108 & 1,564,340 \\
+\texttt{p\_\allowbreak{}2021\_\allowbreak{}2022} & 83 & 1,197,200 \\
+\texttt{p\_\allowbreak{}2025\_\allowbreak{}2026} & 83 & 726,520 \\
 \bottomrule
 \end{tabular}
 \caption{Hallazgo del advisor: \texttt{LECTURAS SECUENCIALES}.}
@@ -610,7 +640,7 @@ Con la carga de trabajo ejecutada 20 veces por consulta, el advisor reporta \tex
 \subsection{Creación y recreación de índices}
 \label{sec:indices}
 
-Siguiendo las recomendaciones se crean cuatro índices sobre \texttt{empleados} (PostgreSQL crea uno local por partición, en \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx}): \texttt{idx\_\allowbreak{}emp\_\allowbreak{}fecha\_\allowbreak{}depto} para Q1, \texttt{idx\_\allowbreak{}emp\_\allowbreak{}depto\_\allowbreak{}salario} para Q3, \texttt{idx\_\allowbreak{}emp\_\allowbreak{}salario} (con \texttt{INCLUDE}) para Q2 e \texttt{idx\_\allowbreak{}emp\_\allowbreak{}email}. Se mide la etapa \texttt{2\_\allowbreak{}con\_\allowbreak{}indices} y se consulta el tamaño de cada índice.
+Siguiendo las recomendaciones se crean cuatro índices sobre \texttt{empleados} (PostgreSQL crea uno local por partición, en \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx}): \texttt{idx\_\allowbreak{}emp\_\allowbreak{}fecha\_\allowbreak{}depto} para Q1, \texttt{idx\_\allowbreak{}emp\_\allowbreak{}depto\_\allowbreak{}salario} para Q3, \texttt{idx\_\allowbreak{}emp\_\allowbreak{}salario} (con \texttt{INCLUDE}) para Q2 e \texttt{idx\_\allowbreak{}emp\_\allowbreak{}email}. Este último es un \textbf{índice de control}: ninguna consulta de la carga filtra por \texttt{email}, y se crea a propósito para comprobar que el advisor detecta índices sin uso (sección~\ref{sec:aplicacion}). Se mide la etapa \texttt{2\_\allowbreak{}con\_\allowbreak{}indices} y se consulta el tamaño de cada índice.
 
 \codigo{ev26_crear_indices}{Creación de índices y medición}
 \evid{ev26_crear_indices}{Creación de índices, medición de la etapa 2 y tamaño de cada índice.}{ev26}
@@ -672,6 +702,7 @@ Al repetir la medición (etapa 4) los costos estimados bajan de nuevo, sobre tod
 \evid{ev39_reevaluacion}{Costo y tiempo antes y después del ajuste de parámetros.}{ev39}
 
 \subsection{Aplicación de la recomendación del advisor}
+\label{sec:aplicacion}
 
 Ninguna de las tres consultas filtra por \texttt{email}, de modo que \texttt{idx\_\allowbreak{}emp\_\allowbreak{}email} solo agrega costo de escritura y 3,000\,kB de espacio (el mayor de los índices). Se aplica la recomendación de eliminarlo. Después se reinician las estadísticas, se repite la carga de trabajo y se vuelve a consultar el advisor.
 
@@ -714,9 +745,9 @@ Q3 (subcons.) & 3,497.53 & 1,719.56 & 1,719.56 & 1,480.70 & 57.7\,\% \\
 \toprule
 \textbf{Consulta} & \textbf{Sin índ. (ms)} & \textbf{Recreado (ms)} & \textbf{+ Parám. (ms)} & \textbf{Reduc.} \\
 \midrule
-Q1 & 1.197 & 0.173 & 0.175 & 85.4\,\% \\
-Q2 & 10.093 & 2.730 & 2.977 & 70.5\,\% \\
-Q3 & 20.164 & 4.590 & 4.486 & 77.8\,\% \\
+Q1 & 0.566 & 0.096 & 0.099 & 82.5\,\% \\
+Q2 & 5.051 & 1.287 & 1.341 & 73.5\,\% \\
+Q3 & 9.231 & 2.538 & 2.497 & 72.9\,\% \\
 \bottomrule
 \end{tabular}
 \caption{Tiempo real de ejecución (mejor de cinco ejecuciones con \texttt{EXPLAIN ANALYZE}).}
@@ -736,14 +767,14 @@ Q3 & 20.164 & 4.590 & 4.486 & 77.8\,\% \\
 \section{Gestión avanzada de almacenamiento}
 \label{sec:almacenamiento}
 
-PostgreSQL no tiene \textit{datafiles} ni \texttt{AUTOEXTEND}: los archivos de un tablespace crecen mientras haya espacio en el volumen donde está su directorio. Por eso el control de crecimiento se hace con las vistas de uso, con la creación de nuevas particiones y con la reubicación de datos entre tablespaces.
+PostgreSQL no tiene \textit{datafiles} ni \texttt{AUTOEXTEND}: los archivos de un tablespace crecen mientras haya espacio en el volumen donde está su directorio. Por eso el control de crecimiento se hace contra el tamaño asignado a cada tablespace (tabla~\ref{tab:dimensionamiento}), con las vistas de uso, con la creación de nuevas particiones y con la reubicación de datos entre tablespaces.
 
 \subsection{Monitoreo de tablespaces y particiones}
 
-La vista \texttt{v\_\allowbreak{}uso\_\allowbreak{}tablespaces} (análoga a \texttt{DBA\_\allowbreak{}DATA\_\allowbreak{}FILES}/\texttt{DBA\_\allowbreak{}FREE\_\allowbreak{}SPACE}) muestra la ruta, el espacio usado y el número de objetos de cada tablespace. \texttt{v\_\allowbreak{}particiones} muestra el rango, las filas y el tamaño de cada partición.
+La vista \texttt{v\_\allowbreak{}uso\_\allowbreak{}tablespaces} (análoga a \texttt{DBA\_\allowbreak{}DATA\_\allowbreak{}FILES}/\texttt{DBA\_\allowbreak{}FREE\_\allowbreak{}SPACE}) muestra la ruta, el espacio usado, el tamaño asignado (tabla \texttt{capacidad\_\allowbreak{}tablespaces}), el porcentaje de uso, el estado (\texttt{OK} o \texttt{ALERTA} al llegar al 80\,\%) y el número de objetos de cada tablespace. \texttt{v\_\allowbreak{}particiones} muestra el rango, las filas y el tamaño de cada partición.
 
-\codigo{ev32_uso_tablespaces}{Vista de uso de tablespaces}
-\evid{ev32_uso_tablespaces}{Uso de espacio por tablespace: \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx} 10,236\,kB y \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}part} 6,972\,kB.}{ev32}
+\codigo{ev32_uso_tablespaces}{Vista de uso de tablespaces frente al tamaño asignado}
+\evid{ev32_uso_tablespaces}{Tamaño asignado y uso por tablespace: \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}idx} 10,236\,kB (7.8\,\% de 128\,MB) y \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}part} 6,972\,kB (5.3\,\%); todos en \texttt{OK}.}{ev32}
 
 \codigo{ev33_particiones}{Vista de particiones}
 \evid{ev33_particiones}{Rango, filas y tamaño de cada partición.}{ev33}
@@ -781,7 +812,9 @@ docker logs bd-lab-final-mant
 docker exec -it bd-lab-final psql -c "SELECT * FROM rrhh.log_mantenimiento;"
 \end{lstlisting}
 
-Este servicio se agregó después de generar las capturas, por lo que no tiene una evidencia en imagen; se demuestra en vivo con los comandos anteriores.
+La evidencia muestra el registro del servicio, con la corrida que se omitió al arrancar porque los scripts aún no existían, y una corrida manual con su registro en \texttt{log\_\allowbreak{}mantenimiento}. También se puede demostrar en vivo con los comandos anteriores.
+
+\evid{ev42_mant_programado}{Servicio \texttt{mantenimiento}: corrida omitida al arrancar y corrida manual registrada en \texttt{rrhh.log\_\allowbreak{}mantenimiento}.}{ev42}
 
 \subsection{Truncado controlado de una partición}
 
@@ -791,17 +824,20 @@ Se cargan 1,000 filas de prueba en \texttt{p\_\allowbreak{}2027\_\allowbreak{}20
 \evid{ev36_truncado}{Filas antes (1,000) y después (0) del truncado, y total de empleados (60,000).}{ev36}
 
 % ==========================================
-% 14. RECOMENDACIONES
+% 14. PROPUESTA
 % ==========================================
-\section{Recomendaciones para ambientes productivos}
+\clearpage
+\section{Propuesta para ambientes productivos}
 \label{sec:recomendaciones}
+
+Para llevar este diseño a producción proponemos lo siguiente:
 
 \begin{itemize}
     \item \textbf{Seguridad:} aplicar siempre mínimo privilegio con \textit{RBAC}; no usar el superusuario en las aplicaciones; exigir \texttt{scram-sha-256} en todo acceso TCP, no dejar contraseñas en texto claro en los scripts (usar un gestor de secretos) y cifrar las conexiones con TLS.
-    \item \textbf{Auditoría:} mantener la bitácora inmutable y en un tablespace propio; enviarla además a un servidor externo para que ni un administrador del sistema operativo pueda alterarla, y evaluar la extensión \texttt{pgAudit}.
-    \item \textbf{Índices:} crear índices a partir de la evidencia de las vistas de estadísticas (no por intuición), preferir índices de cobertura para consultas frecuentes y revisar periódicamente los índices sin uso; cada índice cuesta espacio y escritura.
-    \item \textbf{Particionamiento:} automatizar la creación de la partición siguiente antes de que se llene \texttt{p\_\allowbreak{}futuro}, y archivar o truncar las particiones antiguas con el procedimiento de mantenimiento.
-    \item \textbf{Almacenamiento:} monitorear el espacio libre del volumen de cada tablespace (no existe \texttt{AUTOEXTEND}), alertar al 80\,\% y separar índices, datos, bitácora e históricos en discos distintos.
+    \item \textbf{Auditoría:} mantener la bitácora inmutable y en un tablespace propio, instalar \texttt{pgAudit} y enviar la bitácora a un servidor de registros externo. Así se cierra el único hueco que queda (un superusuario puede desactivar los triggers) y ni un administrador del sistema operativo puede alterarla.
+    \item \textbf{Índices:} crear índices a partir de la evidencia de las vistas de estadísticas (no por intuición), preferir índices de cobertura para consultas frecuentes y revisar periódicamente los índices sin uso; cada índice cuesta espacio y escritura. Revisar cada semana \texttt{v\_\allowbreak{}advisor\_\allowbreak{}hallazgos} con la carga real y medir los planes también como analista y auditor, cuyas consultas pasan por la vista y por el RLS.
+    \item \textbf{Particionamiento:} programar con \texttt{pg\_\allowbreak{}cron} la creación de la partición del año siguiente antes de que los datos lleguen a \texttt{p\_\allowbreak{}futuro}, y el traslado a \texttt{ts\_\allowbreak{}rrhh\_\allowbreak{}hist} de las particiones que cumplan cinco años, reutilizando \texttt{prc\_\allowbreak{}mantenimiento}.
+    \item \textbf{Almacenamiento:} montar cada tablespace en un volumen del tamaño asignado en la tabla~\ref{tab:dimensionamiento} (no existe \texttt{AUTOEXTEND}), conectar \texttt{v\_\allowbreak{}uso\_\allowbreak{}tablespaces} a una alerta cuando el estado pase a \texttt{ALERTA} (80\,\%) y separar índices, datos, bitácora e históricos en discos distintos.
     \item \textbf{Parámetros:} dimensionar \texttt{shared\_\allowbreak{}buffers} (aprox. 25\,\% de la RAM), \texttt{work\_\allowbreak{}mem} según el número de conexiones concurrentes, y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost} según el tipo de disco; tener presente que \texttt{block\_\allowbreak{}size} se decide al compilar el motor.
     \item \textbf{Operación:} tomar respaldos con \texttt{pg\_\allowbreak{}dump} o \texttt{pg\_\allowbreak{}basebackup} antes de cualquier cambio de estructura y ejecutar \texttt{VACUUM ANALYZE} después de cargas masivas, como se hizo en este proyecto.
 \end{itemize}
@@ -812,27 +848,27 @@ Se cargan 1,000 filas de prueba en \texttt{p\_\allowbreak{}2027\_\allowbreak{}20
 \section{Guía de demostración en clase (cambio de rol)}
 \label{sec:demo}
 
-Con el contenedor levantado (\texttt{docker start bd-lab-final} si estaba detenido) se pueden repetir en vivo las acciones más relevantes. Cada usuario se conecta con \texttt{docker exec -it bd-lab-final psql -h localhost -U <usuario> -d rrhh}:
+Con los contenedores levantados (\texttt{docker compose start} desde \texttt{Dockerpfinal} si estaban detenidos) se pueden repetir en vivo las acciones más relevantes. Cada usuario se conecta con \texttt{docker exec -it bd-lab-final psql -h localhost -U <usuario> -d rrhh}:
 
 \begin{enumerate}
-    \item \textbf{Analista} (\texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla}): \texttt{SELECT count(*) FROM v\_\allowbreak{}resumen\_\allowbreak{}empleados;} (40,000 filas); \texttt{SELECT * FROM empleados;} (denegado); \texttt{SELECT * FROM audit\_\allowbreak{}log\_\allowbreak{}empleados;} (denegado).
-    \item \textbf{Administrador} (\texttt{usr\_\allowbreak{}admin}): \texttt{UPDATE empleados SET salario = salario * 1.10 WHERE emp\_\allowbreak{}id = 100;}; \texttt{UPDATE audit\_\allowbreak{}log\_\allowbreak{}empleados ...} (denegado).
+    \item \textbf{Analista} (\texttt{usr\_\allowbreak{}analista\_\allowbreak{}karla}): \texttt{SELECT count(*) FROM v\_\allowbreak{}resumen\_\allowbreak{}empleados;} (40,000 filas); \texttt{SELECT * FROM empleados;} (denegado); \texttt{SELECT * FROM audit\_\allowbreak{}log\_\allowbreak{}empleados;} (denegado); el filtro con división entre cero \texttt{WHERE 1/(CASE WHEN clasificacion\_\allowbreak{}nivel = 3 THEN 0 ELSE 1 END) = 1} devuelve las mismas 40,000 filas sin error (\texttt{security\_\allowbreak{}barrier}).
+    \item \textbf{Administrador} (\texttt{usr\_\allowbreak{}admin}): \texttt{UPDATE empleados SET salario = salario * 1.10 WHERE emp\_\allowbreak{}id = 100;}; \texttt{UPDATE audit\_\allowbreak{}log\_\allowbreak{}empleados ...} (denegado); \texttt{ALTER TABLE empleados DISABLE TRIGGER trg\_\allowbreak{}audit\_\allowbreak{}empleados;} (denegado: no es dueño de la tabla).
     \item \textbf{Auditor} (\texttt{usr\_\allowbreak{}auditor\_\allowbreak{}victor}): \texttt{SELECT * FROM audit\_\allowbreak{}log\_\allowbreak{}empleados;} muestra quién, qué y cuándo cambió el salario del empleado 100.
     \item \textbf{Superusuario} (\texttt{psql -U postgres -d rrhh}): \texttt{SELECT * FROM rrhh.v\_\allowbreak{}advisor\_\allowbreak{}hallazgos;}, \texttt{SELECT * FROM rrhh.v\_\allowbreak{}advisor\_\allowbreak{}recomendaciones;}, \texttt{SELECT * FROM rrhh.v\_\allowbreak{}uso\_\allowbreak{}tablespaces;}, \texttt{EXPLAIN} de las consultas Q1 a Q3 y \texttt{CALL rrhh.prc\_\allowbreak{}mantenimiento('p\_\allowbreak{}2025');}.
     \item \textbf{Cambio de rol sin reconectar} (desde \texttt{postgres}): \texttt{SET ROLE rol\_\allowbreak{}analista;} y \texttt{SET ROLE rol\_\allowbreak{}auditor;} seguidos de \texttt{RESET ROLE;} permiten mostrar los privilegios de cada rol. Para el nivel MAC, que depende del usuario de sesión (\texttt{session\_\allowbreak{}user}), se reconecta con cada usuario.
     \item \textbf{Mantenimiento automático:} \texttt{docker exec bd-lab-final-mant} \texttt{sh /mant/\allowbreak{}mantenimiento.sh} \texttt{-{}-una-vez} fuerza una corrida, y \texttt{SELECT * FROM rrhh.log\_\allowbreak{}mantenimiento;} muestra el registro de todas las corridas, incluidas las programadas.
 \end{enumerate}
 
-Para restaurar el escenario completo desde cero: \texttt{docker compose down -v} y ejecutar \texttt{python generar\_\allowbreak{}evidencias.py} (o los diez scripts de \texttt{sql/} en orden). El script \texttt{validar.sh} comprueba el estado final con 12 verificaciones.
+Para restaurar el escenario completo desde cero: \texttt{docker compose down -v} y ejecutar \texttt{python generar\_\allowbreak{}evidencias.py} (o los diez scripts de \texttt{sql/} en orden). El script \texttt{validar.sh} comprueba el estado final con 14 verificaciones.
 
 % ==========================================
 % 16. CIERRE
 % ==========================================
 \section{Cierre del entorno}
 
-Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se conservan los datos del proyecto:
+Al terminar se detienen los contenedores con \texttt{docker compose stop}, sin borrar los volúmenes, con lo que se conservan los datos del proyecto:
 
-\evid{ev42_cierre}{Detención del contenedor \texttt{bd-lab-final} y estado de los contenedores del curso.}{ev42}
+\evid{ev43_cierre}{Detención de los contenedores del proyecto y su estado final.}{ev43}
 
 % ==========================================
 % CONCLUSIONES
@@ -843,12 +879,12 @@ Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se co
 \subsection{Actividades logradas}
 
 \begin{itemize}
-    \item \textbf{Diseño:} esquema completo de empleados, departamentos y roles, con \texttt{empleados} particionada por rango en cinco particiones y cinco tablespaces especializados (datos, índices, particiones, auditoría e histórico).
-    \item \textbf{Seguridad:} tres usuarios y tres roles; RBAC con privilegios por rol, DAC demostrado con \texttt{GRANT}/\texttt{REVOKE} y MAC con niveles de autorización y \textit{Row Level Security} (el analista ve 40,000 de 60,000 filas). Las pruebas por rol (tabla~\ref{tab:matriz}) validan acceso, modificación y auditoría, incluso con rechazo de contraseña incorrecta.
-    \item \textbf{Auditoría:} vista y trigger que registran usuario, IP y salarios anterior y nuevo, y alimentan el historial de salarios; la bitácora no puede modificarse con SQL normal, ni siquiera por \texttt{postgres}, mientras sus triggers estén activos.
+    \item \textbf{Diseño:} esquema completo de empleados, departamentos y roles, con \texttt{empleados} particionada por rango en cinco particiones y cinco tablespaces especializados (datos, índices, particiones, auditoría e histórico), cada uno con un tamaño definido por cálculo para 300,000 empleados y vigilado contra un umbral de 80\,\% (tabla~\ref{tab:dimensionamiento}).
+    \item \textbf{Seguridad:} tres usuarios y tres roles de trabajo, más un rol propietario sin inicio de sesión (separación de funciones: el administrador no puede borrar la bitácora, desactivar la auditoría ni cambiar los niveles MAC); RBAC con privilegios por rol, DAC demostrado con \texttt{GRANT}/\texttt{REVOKE} y MAC con niveles de autorización, \textit{Row Level Security} y una vista \texttt{security\_\allowbreak{}barrier} que no deja ver filas ocultas a través de mensajes de error (el analista ve 40,000 de 60,000 filas). Las pruebas por rol (tabla~\ref{tab:matriz}) validan acceso, modificación y auditoría, incluso con rechazo de contraseña incorrecta.
+    \item \textbf{Auditoría:} vista y trigger que registran usuario, IP y salarios anterior y nuevo, y alimentan el historial de salarios; la bitácora no puede modificarse con SQL normal, ni siquiera por \texttt{postgres}, mientras sus triggers estén activos, y el administrador no puede desactivarlos porque no es dueño de los objetos.
     \item \textbf{Carga masiva:} 60,000 registros (por encima del mínimo de 50,000) con un bloque PL/pgSQL por lotes con \texttt{COMMIT} intermedio.
-    \item \textbf{Rendimiento:} tres consultas complejas analizadas con \texttt{EXPLAIN}; reducción del costo estimado de 95.4\,\% (Q1), 39.6\,\% (Q2) y 57.7\,\% (Q3), y del tiempo real de entre 70\,\% y 85\,\%, con la recreación del índice de Q1 como índice de cobertura.
-    \item \textbf{Advisor y parámetros:} vistas equivalentes a \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}FINDINGS} y \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}RECOMMENDATIONS} que detectaron 5,165,500 filas leídas secuencialmente y, tras indexar, cero lecturas secuenciales en las particiones con datos; ajuste de \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}.
+    \item \textbf{Rendimiento:} tres consultas complejas analizadas con \texttt{EXPLAIN}; reducción del costo estimado de 95.4\,\% (Q1), 39.6\,\% (Q2) y 57.7\,\% (Q3), y del tiempo real de entre 73\,\% y 83\,\%, con la recreación del índice de Q1 como índice de cobertura.
+    \item \textbf{Advisor y parámetros:} vistas equivalentes a \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}FINDINGS} y \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}RECOMMENDATIONS} que detectaron 5,285,500 filas leídas secuencialmente y, tras indexar, cero lecturas secuenciales en las particiones con datos; ajuste de \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}.
     \item \textbf{Almacenamiento:} monitoreo de tablespaces y particiones, creación de una partición nueva, reubicación del histórico a otro tablespace (3,020\,kB), procedimiento de mantenimiento programado para ejecutarse una vez al día con registro de cada corrida, y truncado de partición sin afectar el resto de la tabla.
     \item \textbf{Reproducibilidad:} todo el escenario se levanta desde cero con un archivo \texttt{docker-compose\allowbreak{}.yaml} y diez scripts, y las capturas de este documento se generan de la ejecución real.
 \end{itemize}
@@ -857,24 +893,24 @@ Al terminar se detiene el contenedor sin borrar los volúmenes, con lo que se co
 
 \begin{itemize}
     \item \textbf{\texttt{DB\_\allowbreak{}BLOCK\_\allowbreak{}SIZE}:} se consultó, pero PostgreSQL lo fija al compilar el motor (8192 bytes) y no puede modificarse; la afinación de memoria se hizo con \texttt{work\_\allowbreak{}mem}, \texttt{maintenance\_\allowbreak{}work\_\allowbreak{}mem} y \texttt{random\_\allowbreak{}page\_\allowbreak{}cost}. No se modificó \texttt{shared\_\allowbreak{}buffers} porque requiere reiniciar el servicio.
-    \item \textbf{\texttt{AUTOEXTEND} de datafiles:} no existe en PostgreSQL; el ajuste dinámico se hizo con particiones y con la reubicación de objetos entre tablespaces.
+    \item \textbf{\texttt{AUTOEXTEND} y tamaño de datafiles:} no existen en PostgreSQL; el tamaño de cada tablespace se definió por cálculo en \texttt{capacidad\_\allowbreak{}tablespaces} y se vigila con una alerta al 80\,\%, pero el motor no impide escribir más allá (el límite físico sería el volumen), y el ajuste dinámico se hizo con particiones y con la reubicación de objetos entre tablespaces.
     \item \textbf{MAC nativo:} PostgreSQL no tiene Oracle Label Security; se implementó con niveles de autorización y \textit{Row Level Security}, que cubre el objetivo (control obligatorio por clasificación) pero con una implementación propia. El MAC aplica al analista y al auditor; el administrador y el superusuario quedan fuera por diseño.
     \item \textbf{Inmutabilidad de la bitácora:} los triggers bloquean cualquier modificación por SQL, pero un superusuario puede desactivarlos; la protección completa requiere copiar la bitácora a un servidor externo o usar \texttt{pgAudit}.
-    \item \textbf{Advisor automático:} \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}*} no existe; se reconstruyó con vistas sobre las estadísticas, por lo que las recomendaciones (crear/eliminar índices) las aplicó el equipo y no se ejecutan de forma automática.
+    \item \textbf{Advisor automático:} \texttt{DBA\_\allowbreak{}ADVISOR\_\allowbreak{}*} no existe; se reconstruyó con vistas sobre las estadísticas, por lo que las recomendaciones (crear/eliminar índices) las aplicó el equipo y no se ejecutan de forma automática; lo que sí corre solo es el mantenimiento de índices y estadísticas (sección~\ref{sec:mant_programado}).
     \item \textbf{Entorno:} se usó Docker en lugar de la máquina virtual VirtualBox mencionada en el enunciado, igual que en las prácticas 1 a 4; la presentación y las preguntas del profesor se pueden resolver ejecutando las consultas de la sección~\ref{sec:demo} sobre el mismo contenedor.
     \item \textbf{Alcance de la medición:} con 60,000 filas que caben en memoria, las diferencias en tiempo real son de milisegundos; el beneficio será mayor con volúmenes productivos, donde también pesará el costo de escritura de los índices.
 \end{itemize}
 
 \subsection{Reflexión}
 
-El proyecto muestra que la seguridad, el rendimiento y el almacenamiento deben diseñarse juntos: la partición por fecha permitió podar lecturas, mover datos históricos a otro tablespace y truncar una partición completa; la separación en roles y niveles permitió dar a cada usuario solo lo necesario; y las vistas del advisor convirtieron la afinación en un proceso medible (hallazgo, recomendación, aplicación y verificación) y no en prueba y error. También confirmamos que cada motor resuelve la misma necesidad de forma distinta y que conviene conocer sus límites (índices locales por partición, sin \texttt{AUTOEXTEND} ni \texttt{DB\_\allowbreak{}BLOCK\_\allowbreak{}SIZE} configurable) antes de migrar un diseño de Oracle a PostgreSQL.
+El proyecto muestra que la seguridad, el rendimiento y el almacenamiento deben diseñarse juntos: la partición por fecha permitió podar lecturas, mover datos históricos a otro tablespace y truncar una partición completa; la separación en roles y niveles permitió dar a cada usuario solo lo necesario, y descubrimos que en PostgreSQL ser dueño de un objeto equivale a poder desactivar sus controles, por lo que el administrador no debe ser propietario; y las vistas del advisor convirtieron la afinación en un proceso medible (hallazgo, recomendación, aplicación y verificación) y no en prueba y error. También confirmamos que cada motor resuelve la misma necesidad de forma distinta y que conviene conocer sus límites (índices locales por partición, sin \texttt{AUTOEXTEND} ni \texttt{DB\_\allowbreak{}BLOCK\_\allowbreak{}SIZE} configurable) antes de migrar un diseño de Oracle a PostgreSQL. La propuesta para llevar este diseño a producción está en la sección~\ref{sec:recomendaciones}.
 
 % ==========================================
 % REFERENCIAS
 % ==========================================
 \section{Referencias}
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 
 \bibitem{carrasco2026proyecto}
 Carrasco Zúñiga, G. G. (2026).
@@ -910,6 +946,26 @@ Recuperado de: \url{https://www.postgresql.org/docs/16/pgstatstatements.html}
 The PostgreSQL Global Development Group. (2026).
 \emph{PostgreSQL 16 Documentation: Resource Consumption (work\_\allowbreak{}mem, shared\_\allowbreak{}buffers)}.
 Recuperado de: \url{https://www.postgresql.org/docs/16/runtime-config-resource.html}
+
+\bibitem{pg_rules_privileges}
+The PostgreSQL Global Development Group. (2026).
+\emph{PostgreSQL 16 Documentation: Rules and Privileges (vistas \texttt{security\_\allowbreak{}barrier})}.
+Recuperado de: \url{https://www.postgresql.org/docs/16/rules-privileges.html}
+
+\bibitem{pg_ddl_priv}
+The PostgreSQL Global Development Group. (2026).
+\emph{PostgreSQL 16 Documentation: Privileges (propiedad de objetos)}.
+Recuperado de: \url{https://www.postgresql.org/docs/16/ddl-priv.html}
+
+\bibitem{pg_reassign}
+The PostgreSQL Global Development Group. (2026).
+\emph{PostgreSQL 16 Documentation: REASSIGN OWNED}.
+Recuperado de: \url{https://www.postgresql.org/docs/16/sql-reassign-owned.html}
+
+\bibitem{pgaudit}
+pgAudit Project. (2026).
+\emph{pgAudit: PostgreSQL Audit Extension}.
+Recuperado de: \url{https://www.pgaudit.org/}
 
 \end{thebibliography}
 
