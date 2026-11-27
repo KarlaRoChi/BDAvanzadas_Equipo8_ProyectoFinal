@@ -73,8 +73,11 @@ CREATE FUNCTION rrhh.nivel_usuario() RETURNS SMALLINT
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = rrhh, pg_temp AS
 $$ SELECT COALESCE((SELECT nivel FROM rrhh.autorizaciones WHERE usuario = session_user), 0) $$;
 
--- 6. Vista de negocio: oculta lo que excede la autorizacion MAC del usuario
-CREATE VIEW rrhh.v_resumen_empleados AS
+-- 6. Vista de negocio: oculta lo que excede la autorizacion MAC del usuario.
+--    security_barrier obliga a aplicar primero el filtro MAC: sin ella, un filtro del
+--    usuario (p. ej. una division entre cero o un cast) se evaluaria antes y sus
+--    mensajes de error revelarian datos de filas ocultas.
+CREATE VIEW rrhh.v_resumen_empleados WITH (security_barrier = true) AS
 SELECT e.emp_id,
        e.nombre || ' ' || e.apellido AS nombre_completo,
        e.email,

@@ -15,7 +15,7 @@ original en Oracle. Todas las cifras del reporte y de la presentación provienen
 
 | Carpeta | Contenido |
 |---|---|
-| [`documento/`](documento) | Reporte en LaTeX (`main.tex`), 42 evidencias en `img/`, código SQL de cada evidencia en `sql/` y el PDF entregable |
+| [`documento/`](documento) | Reporte en LaTeX (`main.tex`), 43 evidencias en `img/`, código SQL de cada evidencia en `sql/` y el PDF entregable |
 | [`presentacion/`](presentacion) | Presentación en PowerPoint (24 diapositivas con notas del orador) |
 | [`Dockerpfinal/`](Dockerpfinal) | Contenedor: `docker-compose.yaml`, los 10 scripts SQL del proyecto, el mantenimiento programado (`mantenimiento/`), generador de evidencias, `validar.sh` y la transcripción completa de la ejecución |
 
@@ -26,9 +26,9 @@ original en Oracle. Todas las cifras del reporte y de la presentación provienen
 
 ## Resumen
 
-- **Diseño:** tabla `empleados` particionada por rango (5 particiones) sobre 5 tablespaces (datos, índices, particiones, auditoría e histórico).
-- **Seguridad multinivel:** tres roles y tres usuarios (`usr_admin`, `usr_analista_karla`, `usr_auditor_victor`); RBAC, DAC con `GRANT`/`REVOKE` y MAC con niveles de autorización y *Row Level Security*.
-- **Auditoría:** vista y trigger que registran usuario, IP y salarios anterior/nuevo; bitácora inmutable incluso para el superusuario.
+- **Diseño:** tabla `empleados` particionada por rango (5 particiones) sobre 5 tablespaces (datos, índices, particiones, auditoría e histórico), cada uno con tamaño asignado (dimensionado para 300,000 empleados) y alerta al 80 % de uso.
+- **Seguridad multinivel:** tres roles y tres usuarios (`usr_admin`, `usr_analista_karla`, `usr_auditor_victor`); RBAC, DAC con `GRANT`/`REVOKE` y MAC con niveles de autorización, *Row Level Security* y una vista `security_barrier`. Ningún objeto pertenece al administrador (los de negocio son de `rol_propietario`, sin inicio de sesión; los de auditoría y afinación, de `postgres`), así que no puede desactivar la auditoría, borrar la bitácora ni cambiar los niveles MAC.
+- **Auditoría:** vista y trigger que registran usuario, IP y salarios anterior/nuevo; bitácora inmutable por SQL mientras sus triggers estén activos (un superusuario podría desactivarlos; ver el reporte).
 - **Carga masiva:** 60,000 registros con un bloque PL/pgSQL por lotes.
 - **Rendimiento:** tres consultas complejas con `EXPLAIN`, advisor propio (vistas sobre `pg_stat_*`), recreación de índices y comparativo antes/después (reducción de costo de 95.4 %, 39.6 % y 57.7 %).
 - **Almacenamiento y parámetros:** monitoreo de tablespaces, nueva partición, reubicación del histórico, procedimiento de mantenimiento programado (servicio `mantenimiento`, una vez al día), truncado y ajuste de `work_mem`, `maintenance_work_mem` y `random_page_cost`.
@@ -39,7 +39,7 @@ original en Oracle. Todas las cifras del reporte y de la presentación provienen
 cd Dockerpfinal
 docker compose up -d
 python generar_evidencias.py   # ejecuta los 10 scripts y regenera documento/img y documento/sql
-bash validar.sh                # 12 verificaciones del estado final
+bash validar.sh                # 14 verificaciones del estado final
 ```
 
 Para compilar el reporte:
