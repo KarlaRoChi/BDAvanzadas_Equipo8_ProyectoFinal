@@ -50,3 +50,4 @@ pdflatex main.tex && pdflatex main.tex
 ```
 
 Detalles del contenedor (usuarios, volúmenes, puertos) en [`Dockerpfinal/README.md`](Dockerpfinal/README.md).
+Comandos de la exposición, paso a paso: [`Dockerpfinal/DEMO.md`](Dockerpfinal/DEMO.md).

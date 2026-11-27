@@ -49,6 +49,7 @@ done
 | `09_almacenamiento.sql` | Uso de tablespaces frente al tamaño asignado, nueva partición, mantenimiento, truncado | `postgres` |
 | `10_parametros.sql` | Ajuste de parámetros, aplicación de recomendaciones | `postgres` |
 
+- Comandos de la demo, por usuario: [`DEMO.md`](DEMO.md).
 - Comprobar el estado final: `bash validar.sh` (14 verificaciones; con los tres servicios levantados).
 - En Git Bash (Windows) exporta antes `MSYS_NO_PATHCONV=1`; si no, convierte `/sql/...` en una ruta de Windows y `psql -f` no encuentra el script.
 - **Mantenimiento automático:** el servicio `mantenimiento` (`bd-lab-final-mant`) ejecuta
