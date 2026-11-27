@@ -34,8 +34,14 @@ if [ "$1" = "--una-vez" ]; then
     exit $?
 fi
 
+# Al detener el contenedor (docker compose stop) se recibe SIGTERM: salir de inmediato y limpio.
+# sleep corre en segundo plano y se espera con wait para que la senal se atienda al momento.
+trap 'echo "Mantenimiento automatico detenido."; kill $SLEEP_PID 2>/dev/null; exit 0' TERM INT
+
 echo "Mantenimiento automatico activo: cada $INTERVALO s"
 while true; do
     corrida || true
-    sleep "$INTERVALO"
+    sleep "$INTERVALO" &
+    SLEEP_PID=$!
+    wait $SLEEP_PID
 done
