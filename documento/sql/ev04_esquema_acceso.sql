@@ -10,6 +10,8 @@ ALTER ROLE usr_admin          SET search_path = rrhh, public;
 ALTER ROLE usr_analista_karla SET search_path = rrhh, public;
 ALTER ROLE usr_auditor_victor SET search_path = rrhh, public;
 
--- 5. Esquema del sistema, propiedad del rol administrador
-CREATE SCHEMA rrhh AUTHORIZATION rol_admin;
+-- 5. Esquema del sistema, propiedad de rol_propietario; el administrador puede
+--    crear objetos en el (los construye en 02_esquema.sql) pero no es su dueno
+CREATE SCHEMA rrhh AUTHORIZATION rol_propietario;
+GRANT USAGE, CREATE ON SCHEMA rrhh TO rol_admin;
 \du

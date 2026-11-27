@@ -11,7 +11,11 @@ CREATE TABLESPACE ts_rrhh_audit LOCATION '/var/lib/postgresql/tablespaces/audit'
 CREATE TABLESPACE ts_rrhh_hist  LOCATION '/var/lib/postgresql/tablespaces/hist';
 \db+
 --;;
--- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion
+-- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion.
+--    rol_propietario es el dueno de los objetos y nadie inicia sesion con el ni es
+--    miembro suyo (separacion de funciones): asi el administrador opera los datos,
+--    pero no puede borrar la bitacora, desactivar triggers ni cambiar politicas.
+CREATE ROLE rol_propietario NOLOGIN;
 CREATE ROLE rol_admin    NOLOGIN;
 CREATE ROLE rol_analista NOLOGIN;
 CREATE ROLE rol_auditor  NOLOGIN;
@@ -36,6 +40,8 @@ ALTER ROLE usr_admin          SET search_path = rrhh, public;
 ALTER ROLE usr_analista_karla SET search_path = rrhh, public;
 ALTER ROLE usr_auditor_victor SET search_path = rrhh, public;
 
--- 5. Esquema del sistema, propiedad del rol administrador
-CREATE SCHEMA rrhh AUTHORIZATION rol_admin;
+-- 5. Esquema del sistema, propiedad de rol_propietario; el administrador puede
+--    crear objetos en el (los construye en 02_esquema.sql) pero no es su dueno
+CREATE SCHEMA rrhh AUTHORIZATION rol_propietario;
+GRANT USAGE, CREATE ON SCHEMA rrhh TO rol_admin;
 \du

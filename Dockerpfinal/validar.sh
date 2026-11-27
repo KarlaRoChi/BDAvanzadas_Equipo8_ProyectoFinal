@@ -45,10 +45,22 @@ echo "7. Auditor: ve nivel 3, lee la bitacora y no puede modificarla..."
 psql_as usr_auditor_victor 'VictorAudit2026#' "SELECT count(*) FROM rrhh.audit_log_empleados;" >/dev/null
 denegado usr_auditor_victor 'VictorAudit2026#' "UPDATE rrhh.audit_log_empleados SET salario_nuevo = 1;"
 
-echo "8. Bitacora inmutable incluso para el superusuario..."
+echo "8. Bitacora inmutable por SQL (triggers activos), incluso para postgres..."
 if psql_su "DELETE FROM rrhh.audit_log_empleados;" >/dev/null 2>&1; then
   echo "ERROR: la bitacora se pudo borrar"; exit 1
 fi
+
+echo "8b. Separacion de funciones: el admin no puede evadir la auditoria ni cambiar el MAC..."
+ADM='AdminSecure2026#'
+# Cada intento va en una transaccion con ROLLBACK, por si alguno llegara a ejecutarse
+denegado usr_admin "$ADM" "BEGIN; ALTER TABLE rrhh.empleados DISABLE TRIGGER trg_audit_empleados; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; DROP TABLE rrhh.audit_log_empleados; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; TRUNCATE rrhh.empleados CASCADE; ROLLBACK;"
+denegado usr_admin "$ADM" "BEGIN; UPDATE rrhh.autorizaciones SET nivel = 3; ROLLBACK;"
+[ "$(psql_su "SELECT count(*) FROM pg_class WHERE relnamespace='rrhh'::regnamespace AND relowner='usr_admin'::regrole;")" = "0" ]
+
+echo "8c. La vista MAC no filtra filas ocultas por mensajes de error (security_barrier)..."
+[ "$(psql_as usr_analista_karla 'KarlaAnalyst2026#' "SELECT count(*) FROM rrhh.v_resumen_empleados WHERE 1/(CASE WHEN clasificacion_nivel = 3 THEN 0 ELSE 1 END) = 1;")" = "40000" ]
 
 echo "9. Autenticacion: contrasena incorrecta debe FALLAR..."
 denegado usr_admin 'ClaveIncorrecta' "SELECT 1;"

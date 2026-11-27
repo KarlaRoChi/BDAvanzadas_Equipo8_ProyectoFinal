@@ -1,4 +1,4 @@
--- 5. Truncado controlado: se cargan filas de prueba en la particion nueva y se vacia
+-- 6. Truncado controlado: se cargan filas de prueba en la particion nueva y se vacia
 --    solo esa particion (sin tocar el resto de la tabla ni disparar la bitacora por fila)
 SET session_replication_role = replica;
 INSERT INTO rrhh.empleados (emp_id, nombre, apellido, email, salario, fecha_ingreso, depto_id, rol_id, clasificacion_nivel)

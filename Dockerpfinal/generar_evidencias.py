@@ -268,6 +268,9 @@ def main():
         "SELECT emp_id, nombre_completo, nombre_depto, nombre_rol, salario, clasificacion_nivel\n"
         "FROM v_resumen_empleados ORDER BY emp_id LIMIT 3;",
         "SELECT * FROM departamentos;",
+        "-- Intento de fuga por error: con security_barrier el filtro MAC se aplica primero\n"
+        "SELECT count(*) AS visibles FROM v_resumen_empleados\n"
+        "WHERE 1 / (CASE WHEN clasificacion_nivel = 3 THEN 0 ELSE 1 END) = 1;",
         "SELECT * FROM empleados LIMIT 1;",
         "DELETE FROM empleados WHERE emp_id = 1;",
         "SELECT * FROM audit_log_empleados;",
@@ -283,6 +286,11 @@ def main():
         "DELETE FROM empleados WHERE emp_id = 60001;",
         "CREATE TABLE prueba_admin (id int);\nDROP TABLE prueba_admin;",
         "UPDATE audit_log_empleados SET salario_nuevo = 1;",
+        "-- Separacion de funciones: el admin no es dueno de los objetos\n"
+        "ALTER TABLE empleados DISABLE TRIGGER trg_audit_empleados;",
+        "DROP TABLE audit_log_empleados;",
+        "TRUNCATE empleados CASCADE;",
+        "UPDATE autorizaciones SET nivel = 3 WHERE usuario = 'usr_analista_karla';",
         "SELECT hist_id, emp_id, salario, vigente_desde, motivo FROM historial_salarios;",
     ])
 
@@ -327,7 +335,7 @@ def main():
     # 11. Cierre
     mark("ev42_cierre")
     ps(f"docker stop {C}", ["docker", "stop", C])
-    ps("docker ps -a", ["docker", "ps", "-a"])
+    ps(f"docker ps -a --filter name={C}", ["docker", "ps", "-a", "--filter", f"name={C}"])
 
     marks.append(("__fin__", len(lines)))
     for (name, a), (_, b) in zip(marks, marks[1:]):

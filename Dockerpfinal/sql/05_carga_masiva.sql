@@ -37,7 +37,7 @@ BEGIN
                ROUND((12000 + random() * 83000)::numeric, 2),
                DATE '2018-01-01' + (i % 3000),
                (ARRAY[10, 20, 30, 40])[1 + i % 4],
-               (ARRAY[1, 2, 3, 4])[1 + i % 4],
+               (ARRAY[1, 2, 3, 4])[1 + (i / 4) % 4],   -- independiente del depto: 16 combinaciones
                1 + i % 3
         FROM generate_series(v_ini, v_ini + v_lote - 1) AS i;
         COMMIT;

@@ -1,4 +1,4 @@
--- 4. Mantenimiento automatico: reconstruye los indices secundarios de las particiones cuyo
+-- 5. Mantenimiento automatico: reconstruye los indices secundarios de las particiones cuyo
 --    nombre inicia con p_prefijo y actualiza las estadisticas de todas las particiones
 CREATE PROCEDURE rrhh.prc_mantenimiento(p_prefijo TEXT)
 LANGUAGE plpgsql AS

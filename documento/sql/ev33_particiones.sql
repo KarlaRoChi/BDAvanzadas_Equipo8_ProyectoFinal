@@ -1,4 +1,4 @@
--- 2. Particiones: rango, filas y tamano de cada una
+-- 3. Particiones: rango, filas y tamano de cada una
 CREATE VIEW rrhh.v_particiones AS
 SELECT c.relname                              AS particion,
        pg_get_expr(c.relpartbound, c.oid)     AS rango,

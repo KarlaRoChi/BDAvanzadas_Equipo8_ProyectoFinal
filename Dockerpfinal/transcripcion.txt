@@ -1,13 +1,13 @@
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker compose up -d
- Volume bd_datos_final Creating 
- Network red-final Creating 
- Network dockerpfinal_default Creating 
  Volume bd_tablespace_final Creating 
- Volume bd_datos_final Created 
+ Volume bd_datos_final Creating 
+ Network dockerpfinal_default Creating 
+ Network red-final Creating 
  Volume bd_tablespace_final Created 
+ Volume bd_datos_final Created 
+ Network red-final Created 
  Network dockerpfinal_default Created 
  Container bd-lab-final-init Creating 
- Network red-final Created 
  Container bd-lab-final-init Created 
  Container bd-lab-final Creating 
  Container bd-lab-final Created 
@@ -19,14 +19,14 @@ PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker compose up -d
  Container bd-lab-final Started 
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker ps
 CONTAINER ID   IMAGE         COMMAND                  CREATED         STATUS                   PORTS                                         NAMES
-cb38978e3d36   postgres:16   "docker-entrypoint.s…"   7 seconds ago   Up 6 seconds (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   bd-lab-final
+292804739c64   postgres:16   "docker-entrypoint.s…"   8 seconds ago   Up 7 seconds (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   bd-lab-final
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec bd-lab-final ls -l /var/lib/postgresql/tablespaces
 total 20
-drwx------ 2 postgres postgres 4096 Oct 14 00:54 audit
-drwx------ 2 postgres postgres 4096 Oct 14 00:54 data
-drwx------ 2 postgres postgres 4096 Oct 14 00:54 hist
-drwx------ 2 postgres postgres 4096 Oct 14 00:54 idx
-drwx------ 2 postgres postgres 4096 Oct 14 00:54 part
+drwx------ 2 postgres postgres 4096 Nov 27 06:11 audit
+drwx------ 2 postgres postgres 4096 Nov 27 06:11 data
+drwx------ 2 postgres postgres 4096 Nov 27 06:11 hist
+drwx------ 2 postgres postgres 4096 Nov 27 06:11 idx
+drwx------ 2 postgres postgres 4096 Nov 27 06:11 part
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec bd-lab-final pg_isready -U postgres -d rrhh
 /var/run/postgresql:5432 - accepting connections
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
@@ -60,7 +60,12 @@ rrhh=# \db+
  ts_rrhh_idx   | postgres | /var/lib/postgresql/tablespaces/idx   |                   |         | 0 bytes | 
  ts_rrhh_part  | postgres | /var/lib/postgresql/tablespaces/part  |                   |         | 0 bytes | 
 (7 rows)
-rrhh=# -- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion
+rrhh=# -- 2. Roles personalizados (RBAC): privilegios agrupados, sin inicio de sesion.
+rrhh=# --    rol_propietario es el dueno de los objetos y nadie inicia sesion con el ni es
+rrhh=# --    miembro suyo (separacion de funciones): asi el administrador opera los datos,
+rrhh=# --    pero no puede borrar la bitacora, desactivar triggers ni cambiar politicas.
+rrhh=# CREATE ROLE rol_propietario NOLOGIN;
+CREATE ROLE
 rrhh=# CREATE ROLE rol_admin    NOLOGIN;
 CREATE ROLE
 rrhh=# CREATE ROLE rol_analista NOLOGIN;
@@ -100,9 +105,12 @@ rrhh=# ALTER ROLE usr_analista_karla SET search_path = rrhh, public;
 ALTER ROLE
 rrhh=# ALTER ROLE usr_auditor_victor SET search_path = rrhh, public;
 ALTER ROLE
-rrhh=# -- 5. Esquema del sistema, propiedad del rol administrador
-rrhh=# CREATE SCHEMA rrhh AUTHORIZATION rol_admin;
+rrhh=# -- 5. Esquema del sistema, propiedad de rol_propietario; el administrador puede
+rrhh=# --    crear objetos en el (los construye en 02_esquema.sql) pero no es su dueno
+rrhh=# CREATE SCHEMA rrhh AUTHORIZATION rol_propietario;
 CREATE SCHEMA
+rrhh=# GRANT USAGE, CREATE ON SCHEMA rrhh TO rol_admin;
+GRANT
 rrhh=# \du
                                   List of roles
      Role name      |                         Attributes                         
@@ -111,6 +119,7 @@ rrhh=# \du
  rol_admin          | Cannot login
  rol_analista       | Cannot login
  rol_auditor        | Cannot login
+ rol_propietario    | Cannot login
  usr_admin          | 
  usr_analista_karla | 
  usr_auditor_victor | 
@@ -219,8 +228,11 @@ rrhh=> CREATE FUNCTION rrhh.nivel_usuario() RETURNS SMALLINT
 rrhh-> LANGUAGE sql STABLE SECURITY DEFINER SET search_path = rrhh, pg_temp AS
 rrhh-> $$ SELECT COALESCE((SELECT nivel FROM rrhh.autorizaciones WHERE usuario = session_user), 0) $$;
 CREATE FUNCTION
-rrhh=> -- 6. Vista de negocio: oculta lo que excede la autorizacion MAC del usuario
-rrhh=> CREATE VIEW rrhh.v_resumen_empleados AS
+rrhh=> -- 6. Vista de negocio: oculta lo que excede la autorizacion MAC del usuario.
+rrhh=> --    security_barrier obliga a aplicar primero el filtro MAC: sin ella, un filtro del
+rrhh=> --    usuario (p. ej. una division entre cero o un cast) se evaluaria antes y sus
+rrhh=> --    mensajes de error revelarian datos de filas ocultas.
+rrhh=> CREATE VIEW rrhh.v_resumen_empleados WITH (security_barrier = true) AS
 rrhh-> SELECT e.emp_id,
 rrhh->        e.nombre || ' ' || e.apellido AS nombre_completo,
 rrhh->        e.email,
@@ -323,15 +335,22 @@ Type "help" for help.
 
 rrhh=# -- 04_seguridad.sql  (se ejecuta como postgres)
 rrhh=# -- Modelos RBAC + DAC + MAC sobre el esquema rrhh.
-rrhh=# -- 1. RBAC: privilegios minimos agrupados en roles
-rrhh=# --    Administrador: control total del esquema (menos la bitacora, que es de solo lectura)
-rrhh=# GRANT USAGE, CREATE ON SCHEMA rrhh TO rol_admin;
+rrhh=# -- 1. Separacion de funciones: usr_admin construyo el esquema en 02_esquema.sql; al
+rrhh=# --    cerrar el diseno, la propiedad pasa a rol_propietario. Un dueno puede desactivar
+rrhh=# --    triggers, borrar tablas o quitar el RLS, asi que el administrador no debe serlo.
+rrhh=# REASSIGN OWNED BY usr_admin TO rol_propietario;
+REASSIGN OWNED
+rrhh=# -- 2. RBAC: privilegios minimos agrupados en roles
+rrhh=# --    Administrador: DML sobre los datos; solo lectura en la bitacora y en los niveles MAC.
+rrhh=# --    No recibe TRUNCATE (vaciaria tablas sin disparar la auditoria por fila) ni TRIGGER.
+rrhh=# GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA rrhh TO rol_admin;
 GRANT
-rrhh=# GRANT ALL ON ALL TABLES IN SCHEMA rrhh TO rol_admin;
-GRANT
-rrhh=# REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON rrhh.audit_log_empleados FROM rol_admin;
+rrhh=# REVOKE INSERT, UPDATE, DELETE ON rrhh.audit_log_empleados, rrhh.autorizaciones FROM rol_admin;
 REVOKE
-rrhh=# GRANT ALL ON ALL SEQUENCES IN SCHEMA rrhh TO rol_admin;
+rrhh=# GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA rrhh TO rol_admin;
+GRANT
+rrhh=# --    DAC: el administrador puede delegar la lectura de empleados (GRANT ... WITH GRANT OPTION)
+rrhh=# GRANT SELECT ON rrhh.empleados TO rol_admin WITH GRANT OPTION;
 GRANT
 rrhh=# --    Analista: solo lectura sobre la vista de negocio y el catalogo de departamentos
 rrhh=# GRANT USAGE ON SCHEMA rrhh TO rol_analista;
@@ -343,11 +362,11 @@ rrhh=# GRANT USAGE ON SCHEMA rrhh TO rol_auditor;
 GRANT
 rrhh=# GRANT SELECT ON rrhh.audit_log_empleados, rrhh.v_resumen_empleados TO rol_auditor;
 GRANT
-rrhh=# -- 2. MAC: nivel de autorizacion de cada usuario (1 Publico, 2 Confidencial, 3 Secreto)
+rrhh=# -- 3. MAC: nivel de autorizacion de cada usuario (1 Publico, 2 Confidencial, 3 Secreto)
 rrhh=# INSERT INTO rrhh.autorizaciones (usuario, nivel) VALUES
 rrhh-#     ('usr_admin', 3), ('usr_analista_karla', 2), ('usr_auditor_victor', 3);
 INSERT 0 3
-rrhh=# -- 3. MAC a nivel de fila (RLS): aunque un usuario reciba acceso a la tabla (DAC),
+rrhh=# -- 4. MAC a nivel de fila (RLS): aunque un usuario reciba acceso a la tabla (DAC),
 rrhh=# --    solo ve las filas cuya clasificacion no excede su autorizacion
 rrhh=# ALTER TABLE rrhh.empleados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE
@@ -359,24 +378,42 @@ CREATE POLICY
 rrhh=# CREATE POLICY pol_admin_escritura ON rrhh.empleados FOR ALL TO rol_admin
 rrhh-#     USING (true) WITH CHECK (true);
 CREATE POLICY
-rrhh=# -- 4. Resumen de privilegios efectivos por rol sobre los objetos del esquema
+rrhh=# -- 5. Resumen de privilegios efectivos por rol sobre los objetos del esquema
 rrhh=# SELECT grantee, table_name, string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privilegios
 rrhh-# FROM information_schema.role_table_grants
 rrhh-# WHERE table_schema = 'rrhh' AND grantee IN ('rol_admin', 'rol_analista', 'rol_auditor')
-rrhh-#   AND table_name IN ('v_resumen_empleados', 'departamentos', 'audit_log_empleados', 'empleados')
+rrhh-#   AND table_name IN ('v_resumen_empleados', 'departamentos', 'audit_log_empleados',
+rrhh-#                      'empleados', 'autorizaciones')
 rrhh-# GROUP BY grantee, table_name
 rrhh-# ORDER BY grantee, table_name;
-   grantee    |     table_name      |                          privilegios                          
---------------+---------------------+---------------------------------------------------------------
- rol_admin    | audit_log_empleados | REFERENCES, SELECT, TRIGGER
- rol_admin    | departamentos       | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
- rol_admin    | empleados           | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
- rol_admin    | v_resumen_empleados | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+   grantee    |     table_name      |          privilegios           
+--------------+---------------------+--------------------------------
+ rol_admin    | audit_log_empleados | SELECT
+ rol_admin    | autorizaciones      | SELECT
+ rol_admin    | departamentos       | DELETE, INSERT, SELECT, UPDATE
+ rol_admin    | empleados           | DELETE, INSERT, SELECT, UPDATE
+ rol_admin    | v_resumen_empleados | DELETE, INSERT, SELECT, UPDATE
  rol_analista | departamentos       | SELECT
  rol_analista | v_resumen_empleados | SELECT
  rol_auditor  | audit_log_empleados | SELECT
  rol_auditor  | v_resumen_empleados | SELECT
-(8 rows)
+(9 rows)
+rrhh=# -- 6. Propietario de cada objeto: ya ninguno pertenece a usr_admin
+rrhh=# SELECT c.relname AS objeto, pg_get_userbyid(c.relowner) AS propietario
+rrhh-# FROM pg_class c
+rrhh-# WHERE c.relnamespace = 'rrhh'::regnamespace AND c.relkind IN ('r', 'p', 'v')
+rrhh-#   AND c.relname NOT LIKE 'p\_%'
+rrhh-# ORDER BY c.relname;
+       objeto        |   propietario   
+---------------------+-----------------
+ audit_log_empleados | postgres
+ autorizaciones      | rol_propietario
+ departamentos       | rol_propietario
+ empleados           | rol_propietario
+ historial_salarios  | rol_propietario
+ roles               | rol_propietario
+ v_resumen_empleados | rol_propietario
+(7 rows)
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
 psql (16.15 (Debian 16.15-1.pgdg13+2))
 Type "help" for help.
@@ -423,7 +460,7 @@ rrhh$#                'usuario.' || i || '@empresa-rrhh.com',
 rrhh$#                ROUND((12000 + random() * 83000)::numeric, 2),
 rrhh$#                DATE '2018-01-01' + (i % 3000),
 rrhh$#                (ARRAY[10, 20, 30, 40])[1 + i % 4],
-rrhh$#                (ARRAY[1, 2, 3, 4])[1 + i % 4],
+rrhh$#                (ARRAY[1, 2, 3, 4])[1 + (i / 4) % 4],   -- independiente del depto: 16 combinaciones
 rrhh$#                1 + i % 3
 rrhh$#         FROM generate_series(v_ini, v_ini + v_lote - 1) AS i;
 rrhh$#         COMMIT;
@@ -456,9 +493,9 @@ rrhh-# GROUP BY tableoid ORDER BY 1::text;
     particion     | registros |   desde    |   hasta    
 ------------------+-----------+------------+------------
  rrhh.p_historico |     21920 | 2018-01-01 | 2020-12-31
+ rrhh.p_2021_2022 |     14600 | 2021-01-01 | 2022-12-31
  rrhh.p_2025_2026 |      8860 | 2025-01-01 | 2026-03-19
  rrhh.p_2023_2024 |     14620 | 2023-01-01 | 2024-12-31
- rrhh.p_2021_2022 |     14600 | 2021-01-01 | 2022-12-31
 (4 rows)
 rrhh=# SELECT count(*) AS total_empleados FROM rrhh.empleados;
  total_empleados 
@@ -483,9 +520,9 @@ rrhh=> SELECT emp_id, nombre_completo, nombre_depto, nombre_rol, salario, clasif
 rrhh-> FROM v_resumen_empleados ORDER BY emp_id LIMIT 3;
  emp_id |   nombre_completo    |         nombre_depto          | nombre_rol | salario  | clasificacion_nivel 
 --------+----------------------+-------------------------------+------------+----------+---------------------
-      1 | Empleado_1 Paterno_1 | Finanzas y Contabilidad       | Gerente    | 73664.42 |                   2
-      3 | Empleado_3 Paterno_3 | Operaciones y Logistica       | Asistente  | 89738.21 |                   1
-      4 | Empleado_4 Paterno_4 | Tecnologias de la Informacion | Director   | 17338.56 |                   2
+      1 | Empleado_1 Paterno_1 | Finanzas y Contabilidad       | Director   | 73664.42 |                   2
+      3 | Empleado_3 Paterno_3 | Operaciones y Logistica       | Director   | 89738.21 |                   1
+      4 | Empleado_4 Paterno_4 | Tecnologias de la Informacion | Gerente    | 17338.56 |                   2
 (3 rows)
 rrhh=> SELECT * FROM departamentos;
  depto_id |         nombre_depto          | presupuesto_anual | clasificacion_seguridad 
@@ -495,6 +532,13 @@ rrhh=> SELECT * FROM departamentos;
        30 | Recursos Humanos              |        1500000.00 | CONFIDENCIAL
        40 | Operaciones y Logistica       |        4000000.00 | RESTRINGIDO
 (4 rows)
+rrhh=> -- Intento de fuga por error: con security_barrier el filtro MAC se aplica primero
+rrhh-> SELECT count(*) AS visibles FROM v_resumen_empleados
+rrhh-> WHERE 1 / (CASE WHEN clasificacion_nivel = 3 THEN 0 ELSE 1 END) = 1;
+ visibles 
+----------
+    40000
+(1 row)
 rrhh=> SELECT * FROM empleados LIMIT 1;
 ERROR:  permission denied for table empleados
 rrhh=> DELETE FROM empleados WHERE emp_id = 1;
@@ -525,10 +569,19 @@ CREATE TABLE
 DROP TABLE
 rrhh=> UPDATE audit_log_empleados SET salario_nuevo = 1;
 ERROR:  permission denied for table audit_log_empleados
+rrhh=> -- Separacion de funciones: el admin no es dueno de los objetos
+rrhh-> ALTER TABLE empleados DISABLE TRIGGER trg_audit_empleados;
+ERROR:  must be owner of table empleados
+rrhh=> DROP TABLE audit_log_empleados;
+ERROR:  must be owner of table audit_log_empleados
+rrhh=> TRUNCATE empleados CASCADE;
+ERROR:  permission denied for table empleados
+rrhh=> UPDATE autorizaciones SET nivel = 3 WHERE usuario = 'usr_analista_karla';
+ERROR:  permission denied for table autorizaciones
 rrhh=> SELECT hist_id, emp_id, salario, vigente_desde, motivo FROM historial_salarios;
  hist_id | emp_id | salario  | vigente_desde |                  motivo                  
 ---------+--------+----------+---------------+------------------------------------------
-       1 |    100 | 26717.00 | 2026-10-14    | Cambio de salario registrado por trigger
+       1 |    100 | 26717.00 | 2026-11-27    | Cambio de salario registrado por trigger
 (1 row)
 rrhh=> \q
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -h localhost -U usr_auditor_victor -d rrhh
@@ -696,9 +749,9 @@ rrhh=# SELECT rrhh.registrar_etapa('1_sin_indices');
 rrhh=# SELECT etapa, consulta, costo, tiempo_ms FROM rrhh.tuning_resultados ORDER BY consulta;
      etapa     | consulta |  costo  | tiempo_ms 
 ---------------+----------+---------+-----------
- 1_sin_indices | Q1       |  432.81 |     1.197
- 1_sin_indices | Q2       | 1708.78 |    10.093
- 1_sin_indices | Q3       | 3497.53 |    20.164
+ 1_sin_indices | Q1       |  432.81 |     0.554
+ 1_sin_indices | Q2       | 1708.78 |     4.970
+ 1_sin_indices | Q3       | 3497.53 |     9.354
 (3 rows)
 rrhh=# -- Query 1: filtro por rango de fechas (poda de particiones)
 rrhh=# EXPLAIN
@@ -836,22 +889,22 @@ rrhh=# SELECT pg_sleep(2);
 rrhh=# SELECT * FROM rrhh.v_advisor_hallazgos ORDER BY filas_leidas DESC, objeto;
        hallazgo        |   objeto    | veces | filas_leidas 
 -----------------------+-------------+-------+--------------
- LECTURAS SECUENCIALES | p_historico |    81 |      1753600
- LECTURAS SECUENCIALES | p_2023_2024 |   106 |      1535100
- LECTURAS SECUENCIALES | p_2021_2022 |    81 |      1168000
- LECTURAS SECUENCIALES | p_2025_2026 |    81 |       708800
+ LECTURAS SECUENCIALES | p_historico |    83 |      1797440
+ LECTURAS SECUENCIALES | p_2023_2024 |   108 |      1564340
+ LECTURAS SECUENCIALES | p_2021_2022 |    83 |      1197200
+ LECTURAS SECUENCIALES | p_2025_2026 |    83 |       726520
 (4 rows)
 rrhh=# SELECT * FROM rrhh.v_advisor_recomendaciones;
        hallazgo        | objetos_afectados | filas_leidas_en_total |                              recomendacion                               
 -----------------------+-------------------+-----------------------+--------------------------------------------------------------------------
- LECTURAS SECUENCIALES |                 4 |               5165500 | CREATE INDEX sobre las columnas de filtro de las sentencias mas costosas
+ LECTURAS SECUENCIALES |                 4 |               5285500 | CREATE INDEX sobre las columnas de filtro de las sentencias mas costosas
 (1 row)
 rrhh=# SELECT * FROM rrhh.v_advisor_sentencias LIMIT 3;
  calls | total_ms |                               sentencia                                
 -------+----------+------------------------------------------------------------------------
-     1 |  1123.37 | VACUUM ANALYZE rrhh.empleados
-     1 |     1.99 | EXPLAIN SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_
-     1 |     1.32 | EXPLAIN SELECT e.emp_id, e.nombre, e.salario FROM rrhh.empleados e WHE
+     1 |   406.37 | VACUUM ANALYZE rrhh.empleados
+     1 |     0.71 | EXPLAIN SELECT d.nombre_depto, r.nombre_rol, COUNT(e.emp_id) AS total_
+     1 |     0.60 | EXPLAIN SELECT e.emp_id, e.nombre, e.salario FROM rrhh.empleados e WHE
 (3 rows)
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
 psql (16.15 (Debian 16.15-1.pgdg13+2))
@@ -859,13 +912,16 @@ Type "help" for help.
 
 rrhh=# -- 08_indices.sql  (se ejecuta como postgres)
 rrhh=# -- Creacion y recreacion de indices, y evaluacion del impacto en el costo de ejecucion.
-rrhh=# -- 1. Indices recomendados por el advisor (se crean en cada particion, en ts_rrhh_idx)
+rrhh=# -- 1. Indices sobre las columnas de filtro que senalo el advisor (uno por consulta; se
+rrhh=# --    crean en cada particion, en ts_rrhh_idx)
 rrhh=# CREATE INDEX idx_emp_fecha_depto   ON rrhh.empleados (fecha_ingreso, depto_id) TABLESPACE ts_rrhh_idx;
 CREATE INDEX
 rrhh=# CREATE INDEX idx_emp_depto_salario ON rrhh.empleados (depto_id, salario)       TABLESPACE ts_rrhh_idx;
 CREATE INDEX
 rrhh=# CREATE INDEX idx_emp_salario       ON rrhh.empleados (salario) INCLUDE (depto_id, rol_id) TABLESPACE ts_rrhh_idx;
 CREATE INDEX
+rrhh=# --    Indice de control: ninguna consulta de la carga filtra por email. Se crea a proposito
+rrhh=# --    para comprobar que el advisor detecta indices sin uso (se elimina en 10_parametros.sql)
 rrhh=# CREATE INDEX idx_emp_email         ON rrhh.empleados (email)                   TABLESPACE ts_rrhh_idx;
 CREATE INDEX
 rrhh=# ANALYZE rrhh.empleados;
@@ -1009,9 +1065,9 @@ rrhh-# FROM rrhh.tuning_resultados
 rrhh-# GROUP BY consulta ORDER BY consulta;
  consulta | costo_antes | costo_con_idx | costo_final | ms_antes | ms_despues 
 ----------+-------------+---------------+-------------+----------+------------
- Q1       |      432.81 |        232.80 |       28.68 |    1.197 |      0.173
- Q2       |     1708.78 |       1053.14 |     1053.14 |   10.093 |      2.730
- Q3       |     3497.53 |       1719.56 |     1719.56 |   20.164 |      4.590
+ Q1       |      432.81 |        232.80 |       28.68 |    0.554 |      0.097
+ Q2       |     1708.78 |       1053.14 |     1053.14 |    4.970 |      1.343
+ Q3       |     3497.53 |       1719.56 |     1719.56 |    9.354 |      2.533
 (3 rows)
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker exec -it bd-lab-final psql -U postgres -d rrhh
 psql (16.15 (Debian 16.15-1.pgdg13+2))
@@ -1021,27 +1077,50 @@ rrhh=# -- 09_almacenamiento.sql  (se ejecuta como postgres)
 rrhh=# -- Monitoreo de tablespaces, ajuste dinamico de particiones y mantenimiento automatico.
 rrhh=# -- PostgreSQL no tiene AUTOEXTEND: los archivos de un tablespace crecen mientras haya
 rrhh=# -- espacio en el volumen; el crecimiento se controla con las vistas de uso y con nuevas particiones.
-rrhh=# -- 1. Uso de espacio por tablespace (equivalente a DBA_DATA_FILES / DBA_FREE_SPACE)
+rrhh=# -- 1. Tamano asignado a cada tablespace (equivalente a DATAFILE ... SIZE / MAXSIZE de Oracle).
+rrhh=# --    Dimensionado para 300,000 empleados (5 veces la carga actual); ver el calculo en el reporte.
+rrhh=# CREATE TABLE rrhh.capacidad_tablespaces (
+rrhh-#     tablespace     NAME     PRIMARY KEY,
+rrhh-#     asignado_mb    INTEGER  NOT NULL CHECK (asignado_mb > 0),
+rrhh-#     umbral_pct     SMALLINT NOT NULL DEFAULT 80 CHECK (umbral_pct BETWEEN 1 AND 100),
+rrhh-#     criterio       TEXT     NOT NULL
+rrhh-# ) TABLESPACE ts_rrhh_data;
+CREATE TABLE
+rrhh=# INSERT INTO rrhh.capacidad_tablespaces (tablespace, asignado_mb, criterio) VALUES
+rrhh-#     ('ts_rrhh_data',   32, 'Catalogos, historial, niveles MAC y afinacion (hoy ~100 kB)'),
+rrhh-#     ('ts_rrhh_part',  128, '300,000 x ~120 B/fila = ~35 MB; holgura x3.5'),
+rrhh-#     ('ts_rrhh_idx',   128, '300,000 x ~175 B/fila (PK + indices) = ~51 MB; holgura x2.5'),
+rrhh-#     ('ts_rrhh_audit', 256, '1,000,000 eventos x ~120 B = ~115 MB; holgura x2'),
+rrhh-#     ('ts_rrhh_hist',   64, 'Hoy ~3 MB (filas antes de 2021); holgura para archivar ~20 anios');
+INSERT 0 5
+rrhh=# -- 2. Uso de espacio por tablespace frente a su tamano asignado
+rrhh=# --    (equivalente a DBA_DATA_FILES / DBA_FREE_SPACE con alerta por umbral)
 rrhh=# CREATE VIEW rrhh.v_uso_tablespaces AS
 rrhh-# SELECT t.spcname                                                AS tablespace,
 rrhh-#        COALESCE(NULLIF(pg_tablespace_location(t.oid), ''), '(directorio de datos)') AS ruta,
 rrhh-#        pg_size_pretty(pg_tablespace_size(t.oid))                AS usado,
-rrhh-#        (SELECT count(*) FROM pg_class c WHERE c.reltablespace = t.oid AND c.relkind IN ('r', 'i')) AS objetos
+rrhh-#        c.asignado_mb || ' MB'                                   AS asignado,
+rrhh-#        ROUND(100.0 * pg_tablespace_size(t.oid) / (c.asignado_mb * 1024.0 * 1024), 1) AS pct_uso,
+rrhh-#        CASE WHEN c.asignado_mb IS NULL THEN '-'
+rrhh-#             WHEN pg_tablespace_size(t.oid) >= c.asignado_mb * 1024.0 * 1024 * c.umbral_pct / 100
+rrhh-#                  THEN 'ALERTA' ELSE 'OK' END                    AS estado,
+rrhh-#        (SELECT count(*) FROM pg_class r WHERE r.reltablespace = t.oid AND r.relkind IN ('r', 'i')) AS objetos
 rrhh-# FROM pg_tablespace t
+rrhh-# LEFT JOIN rrhh.capacidad_tablespaces c ON c.tablespace = t.spcname
 rrhh-# ORDER BY pg_tablespace_size(t.oid) DESC;
 CREATE VIEW
 rrhh=# SELECT * FROM rrhh.v_uso_tablespaces;
-  tablespace   |                 ruta                  |  usado   | objetos 
----------------+---------------------------------------+----------+---------
- pg_default    | (directorio de datos)                 | 30 MB    |       0
- ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 10236 kB |      30
- ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 6972 kB  |       5
- pg_global     | (directorio de datos)                 | 605 kB   |      41
- ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 84 kB    |       9
- ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB    |       3
- ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 0 bytes  |       0
+  tablespace   |                 ruta                  |  usado   | asignado | pct_uso | estado | objetos 
+---------------+---------------------------------------+----------+----------+---------+--------+---------
+ pg_default    | (directorio de datos)                 | 30 MB    |          |         | -      |       0
+ ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 10236 kB | 128 MB   |     7.8 | OK     |      30
+ ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 6972 kB  | 128 MB   |     5.3 | OK     |       5
+ pg_global     | (directorio de datos)                 | 605 kB   |          |         | -      |      41
+ ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 100 kB   | 32 MB    |     0.3 | OK     |      11
+ ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB    | 256 MB   |     0.0 | OK     |       3
+ ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 0 bytes  | 64 MB    |     0.0 | OK     |       0
 (7 rows)
-rrhh=# -- 2. Particiones: rango, filas y tamano de cada una
+rrhh=# -- 3. Particiones: rango, filas y tamano de cada una
 rrhh=# CREATE VIEW rrhh.v_particiones AS
 rrhh-# SELECT c.relname                              AS particion,
 rrhh-#        pg_get_expr(c.relpartbound, c.oid)     AS rango,
@@ -1062,11 +1141,13 @@ rrhh=# SELECT * FROM rrhh.v_particiones;
  p_futuro    | FOR VALUES FROM ('2027-01-01') TO (MAXVALUE)     |     0 | 40 kB
  p_historico | FOR VALUES FROM (MINVALUE) TO ('2021-01-01')     | 21920 | 6176 kB
 (5 rows)
-rrhh=# -- 3. Ajuste dinamico: nueva particion 2027-2028 y reubicacion de los datos historicos
+rrhh=# -- 4. Ajuste dinamico: nueva particion 2027-2028 y reubicacion de los datos historicos
 rrhh=# --    en su propio tablespace (ts_rrhh_hist), sin perder informacion
 rrhh=# CREATE TABLE rrhh.p_2027_2028 (LIKE rrhh.empleados INCLUDING DEFAULTS INCLUDING CONSTRAINTS)
 rrhh-#     TABLESPACE ts_rrhh_part;
 CREATE TABLE
+rrhh=# ALTER TABLE rrhh.p_2027_2028 OWNER TO rol_propietario;   -- mismo dueno que el resto de las particiones
+ALTER TABLE
 rrhh=# ALTER TABLE rrhh.empleados DETACH PARTITION rrhh.p_futuro;
 ALTER TABLE
 rrhh=# ALTER TABLE rrhh.empleados ATTACH PARTITION rrhh.p_2027_2028
@@ -1090,17 +1171,17 @@ rrhh=# SELECT * FROM rrhh.v_particiones;
  p_historico | FOR VALUES FROM (MINVALUE) TO ('2021-01-01')     | 21920 | 6176 kB
 (6 rows)
 rrhh=# SELECT * FROM rrhh.v_uso_tablespaces;
-  tablespace   |                 ruta                  |  usado  | objetos 
----------------+---------------------------------------+---------+---------
- pg_default    | (directorio de datos)                 | 30 MB   |       0
- ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 9780 kB |      34
- ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 4452 kB |       5
- ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 3020 kB |       2
- pg_global     | (directorio de datos)                 | 605 kB  |      41
- ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 84 kB   |       9
- ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB   |       3
+  tablespace   |                 ruta                  |  usado  | asignado | pct_uso | estado | objetos 
+---------------+---------------------------------------+---------+----------+---------+--------+---------
+ pg_default    | (directorio de datos)                 | 30 MB   |          |         | -      |       0
+ ts_rrhh_idx   | /var/lib/postgresql/tablespaces/idx   | 9780 kB | 128 MB   |     7.5 | OK     |      34
+ ts_rrhh_part  | /var/lib/postgresql/tablespaces/part  | 4452 kB | 128 MB   |     3.4 | OK     |       5
+ ts_rrhh_hist  | /var/lib/postgresql/tablespaces/hist  | 3020 kB | 64 MB    |     4.6 | OK     |       2
+ pg_global     | (directorio de datos)                 | 605 kB  |          |         | -      |      41
+ ts_rrhh_data  | /var/lib/postgresql/tablespaces/data  | 100 kB  | 32 MB    |     0.3 | OK     |      11
+ ts_rrhh_audit | /var/lib/postgresql/tablespaces/audit | 36 kB   | 256 MB   |     0.0 | OK     |       3
 (7 rows)
-rrhh=# -- 4. Mantenimiento automatico: reconstruye los indices secundarios de las particiones cuyo
+rrhh=# -- 5. Mantenimiento automatico: reconstruye los indices secundarios de las particiones cuyo
 rrhh=# --    nombre inicia con p_prefijo y actualiza las estadisticas de todas las particiones
 rrhh=# CREATE PROCEDURE rrhh.prc_mantenimiento(p_prefijo TEXT)
 rrhh-# LANGUAGE plpgsql AS
@@ -1125,10 +1206,10 @@ rrhh$# END;
 rrhh$# $$;
 CREATE PROCEDURE
 rrhh=# CALL rrhh.prc_mantenimiento('p_2025');
-NOTICE:  Indice reconstruido: p_2025_2026_depto_id_salario_idx
-NOTICE:  Indice reconstruido: p_2025_2026_salario_depto_id_rol_id_idx
 NOTICE:  Indice reconstruido: p_2025_2026_email_idx
+NOTICE:  Indice reconstruido: p_2025_2026_salario_depto_id_rol_id_idx
 NOTICE:  Indice reconstruido: p_2025_2026_fecha_ingreso_depto_id_salario_idx
+NOTICE:  Indice reconstruido: p_2025_2026_depto_id_salario_idx
 NOTICE:  Particion analizada: p_historico
 NOTICE:  Particion analizada: p_2021_2022
 NOTICE:  Particion analizada: p_2023_2024
@@ -1136,7 +1217,7 @@ NOTICE:  Particion analizada: p_2025_2026
 NOTICE:  Particion analizada: p_2027_2028
 NOTICE:  Particion analizada: p_futuro
 CALL
-rrhh=# -- 5. Truncado controlado: se cargan filas de prueba en la particion nueva y se vacia
+rrhh=# -- 6. Truncado controlado: se cargan filas de prueba en la particion nueva y se vacia
 rrhh=# --    solo esa particion (sin tocar el resto de la tabla ni disparar la bitacora por fila)
 rrhh=# SET session_replication_role = replica;
 SET
@@ -1236,9 +1317,9 @@ rrhh-# FROM rrhh.tuning_resultados
 rrhh-# GROUP BY consulta ORDER BY consulta;
  consulta | costo_idx | costo_params | ms_idx | ms_params 
 ----------+-----------+--------------+--------+-----------
- Q1       |     28.68 |        19.98 |  0.173 |     0.175
- Q2       |   1053.14 |      1031.86 |  2.730 |     2.977
- Q3       |   1719.56 |      1480.70 |  4.590 |     4.486
+ Q1       |     28.68 |        19.98 |  0.097 |     0.099
+ Q2       |   1053.14 |      1031.86 |  1.343 |     1.348
+ Q3       |   1719.56 |      1480.70 |  2.533 |     2.505
 (3 rows)
 rrhh=# -- 4. Aplicacion de la recomendacion INDICE SIN USO: idx_emp_email no lo usa ninguna de las
 rrhh=# --    consultas de la carga de trabajo y solo agrega costo de escritura y 3 MB de espacio
@@ -1289,9 +1370,7 @@ rrhh=# SELECT * FROM rrhh.v_advisor_hallazgos ORDER BY filas_leidas DESC, objeto
 rrhh=# \q
 PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker stop bd-lab-final
 bd-lab-final
-PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker ps -a
-CONTAINER ID   IMAGE         COMMAND                  CREATED             STATUS                              PORTS     NAMES
-cb38978e3d36   postgres:16   "docker-entrypoint.s…"   42 seconds ago      Exited (0) Less than a second ago             bd-lab-final
-8b929048d8f3   postgres:16   "docker-entrypoint.s…"   42 seconds ago      Exited (0) 41 seconds ago                     bd-lab-final-init
-fc7cfbb07ef8   postgres:16   "docker-entrypoint.s…"   About an hour ago   Exited (0) About an hour ago                  bd-lab-p4
-00ebf9d13e12   postgres:16   "docker-entrypoint.s…"   2 hours ago         Exited (0) 2 hours ago                        bd-lab-p3
+PS D:\PROYECTOS LATEX y otros\BDA\Dockerpfinal> docker ps -a --filter name=bd-lab-final
+CONTAINER ID   IMAGE         COMMAND                  CREATED          STATUS                              PORTS     NAMES
+292804739c64   postgres:16   "docker-entrypoint.s…"   34 seconds ago   Exited (0) Less than a second ago             bd-lab-final
+28c9dd26f674   postgres:16   "docker-entrypoint.s…"   34 seconds ago   Exited (0) 33 seconds ago                     bd-lab-final-init

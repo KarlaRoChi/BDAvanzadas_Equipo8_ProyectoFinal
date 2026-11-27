@@ -38,18 +38,19 @@ done
 
 | Script | Contenido | Se ejecuta como |
 |---|---|---|
-| `01_instancia_roles.sql` | 5 tablespaces, roles RBAC, 3 usuarios, esquema `rrhh` | `postgres` |
+| `01_instancia_roles.sql` | 5 tablespaces, roles RBAC y `rol_propietario`, 3 usuarios, esquema `rrhh` | `postgres` |
 | `02_esquema.sql` | Catálogos, `empleados` particionada por rango, historial, nivel MAC, vista | `usr_admin` |
 | `03_auditoria.sql` | Bitácora, trigger de auditoría, bitácora inmutable | `postgres` |
-| `04_seguridad.sql` | GRANT (DAC/RBAC), niveles MAC y políticas RLS | `postgres` |
+| `04_seguridad.sql` | Propiedad a `rol_propietario`, GRANT (DAC/RBAC), niveles MAC y políticas RLS | `postgres` |
 | `05_carga_masiva.sql` | 60,000 registros con bloque `DO` por lotes de 5,000 | `postgres` |
 | `06_rendimiento_base.sql` | 3 consultas complejas, medición de costo y plan (antes) | `postgres` |
 | `07_advisor.sql` | Hallazgos y recomendaciones (análogo a `DBA_ADVISOR_*`) | `postgres` |
 | `08_indices.sql` | Creación y recreación de índices, comparativo de costos | `postgres` |
-| `09_almacenamiento.sql` | Uso de tablespaces, nueva partición, mantenimiento, truncado | `postgres` |
+| `09_almacenamiento.sql` | Tamaño asignado y uso de tablespaces, nueva partición, mantenimiento, truncado | `postgres` |
 | `10_parametros.sql` | Ajuste de parámetros, aplicación de recomendaciones | `postgres` |
 
 - Comprobar el estado final: `bash validar.sh`
+- En Git Bash (Windows) exporta antes `MSYS_NO_PATHCONV=1`; si no, convierte `/sql/...` en una ruta de Windows y `psql -f` no encuentra el script.
 - Regenerar las capturas de `../documento/img` y el código de `../documento/sql`:
   `python generar_evidencias.py` (requiere `pip install pillow`;
   **ejecuta `docker compose down -v` al empezar**, así que borra los datos del proyecto).
@@ -59,7 +60,7 @@ done
 
 | Oracle (enunciado) | PostgreSQL (adaptación) |
 |---|---|
-| `CREATE TABLESPACE ... DATAFILE ... AUTOEXTEND` | `CREATE TABLESPACE ... LOCATION` (no hay datafiles ni `AUTOEXTEND`: crecen mientras haya espacio en el volumen) |
+| `CREATE TABLESPACE ... DATAFILE ... SIZE ... AUTOEXTEND` | `CREATE TABLESPACE ... LOCATION` (no hay datafiles ni `AUTOEXTEND`); el tamaño se define en `rrhh.capacidad_tablespaces` y se vigila con `v_uso_tablespaces` |
 | `PARTITION BY RANGE ... VALUES LESS THAN` | `PARTITION BY RANGE` + `PARTITION OF ... FOR VALUES FROM ... TO` |
 | MAC con Oracle Label Security | Nivel por usuario (`autorizaciones`) + `ROW LEVEL SECURITY` y vista filtrada |
 | Roles `CONNECT`, `RESOURCE`, `DBA` | Roles propios con `GRANT` explícitos (mínimo privilegio) |
