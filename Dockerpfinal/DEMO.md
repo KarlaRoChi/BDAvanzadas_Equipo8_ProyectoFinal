@@ -114,9 +114,29 @@ docker exec -it bd-lab-final psql -U postgres -d rrhh
 DELETE FROM rrhh.audit_log_empleados;
 TRUNCATE rrhh.audit_log_empleados;
 
--- Advisor propio (equivalente a DBA_ADVISOR_FINDINGS / DBA_ADVISOR_RECOMMENDATIONS)
+-- Advisor propio (equivalente a DBA_ADVISOR_FINDINGS / DBA_ADVISOR_RECOMMENDATIONS).
+-- Hallazgos da el detalle (que objetos); recomendaciones lo resume por tipo (que hacer).
 SELECT * FROM rrhh.v_advisor_hallazgos;
 SELECT * FROM rrhh.v_advisor_recomendaciones;
+
+-- Detalle de la recomendacion: cada "indice sin uso" es la copia local de un indice
+-- particionado, en una particion vacia o que la poda de Q1 no toca
+SELECT p.inhparent::regclass AS indice_padre,
+       c.relname             AS indice_sin_uso,
+       t.relname             AS particion,
+       t.reltuples::bigint   AS filas_particion
+FROM rrhh.v_advisor_hallazgos h
+JOIN pg_class c ON c.relname = h.objeto AND c.relnamespace = 'rrhh'::regnamespace
+JOIN pg_index x ON x.indexrelid = c.oid
+JOIN pg_class t ON t.oid = x.indrelid
+LEFT JOIN pg_inherits p ON p.inhrelid = c.oid
+WHERE h.hallazgo = 'INDICE SIN USO'
+ORDER BY 1, 3;
+
+-- Por eso la recomendacion dice "Evaluar": la copia local no se puede borrar sola
+-- (ERROR: ... because index rrhh.idx_emp_depto_salario requires it), y borrar el padre
+-- quitaria el indice tambien en las particiones que si lo usan. Se conservan.
+BEGIN; DROP INDEX rrhh.p_futuro_depto_id_salario_idx; ROLLBACK;
 
 -- Comparativo antes/después de la afinación (4 etapas x 3 consultas)
 SELECT etapa, consulta, costo, tiempo_ms
